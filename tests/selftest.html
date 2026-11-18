@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atlas Syndicate - self-test</title>
+<style>
+  body { margin: 0; background: #0d0e10; color: #c9c6bb; font: 14px ui-monospace, Menlo, Consolas, monospace; }
+  pre { margin: 24px; padding: 16px; border: 3px solid #4a4f55; white-space: pre-wrap; }
+  pre.pass { border-color: #7f9a88; } pre.fail { border-color: #a8402c; }
+  h1 { margin: 24px 24px 0; font-size: 18px; letter-spacing: 3px; color: #e0b85a; }
+</style>
+</head>
+<body>
+<h1>ATLAS SYNDICATE SELF-TEST</h1>
+<pre id="out">running...</pre>
+<script src="../js/config.js"></script>
+<script src="../js/util.js"></script>
+<script src="../js/sim/world.js"></script>
+<script src="../js/sim/economy.js"></script>
+<script src="../js/sim/logistics.js"></script>
+<script src="../js/sim/actions.js"></script>
+<script src="../js/sim/events.js"></script>
+<script src="../js/sim/sim.js"></script>
+<script src="../js/sim/bot.js"></script>
+<script src="../js/sim/selftest.js"></script>
+<script>
+  setTimeout(function () {
+    var r = AS.SelfTest.run(), out = document.getElementById('out');
+    out.textContent = r.lines.join('\n');
+    out.className = r.pass ? 'pass' : 'fail';
+    console.log(r.pass ? 'SELFTEST PASS' : 'SELFTEST FAIL');
+  }, 50);
+</script>
+</body>
+</html>

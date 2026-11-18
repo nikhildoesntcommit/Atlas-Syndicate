@@ -1,0 +1,32 @@
+/* ATLAS SYNDICATE v4 — the page is just a black stage for one integer-scaled pixel canvas. */
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0d0e10;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+body { display: flex; align-items: center; justify-content: center; }
+#screen {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  cursor: crosshair;
+  outline: none;
+}
+/* off-screen text field: only used to raise the on-screen keyboard on phones */
+#kbd {
+  position: fixed;
+  left: -1000px;
+  top: 0;
+  width: 10px;
+  height: 10px;
+  opacity: 0;
+  font-size: 16px;
+}
+.noscript { color: #c9c6bb; font: 16px monospace; }
