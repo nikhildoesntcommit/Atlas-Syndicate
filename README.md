@@ -36,6 +36,7 @@ A pixel-art strategy game for the browser. 25–30 minute sessions. No install, 
 | Pause (orders still work) | II button | Space |
 | Speed 1× / 2× / 3× | buttons | 1 2 3 |
 | Tips, sound, menu | buttons | T, M, Esc |
+| Delete your saved game | Settings → Saved game → DELETE, then CONFIRM | |
 
 ## How the AI works
 
@@ -75,6 +76,8 @@ node tests/browser-test.js --shots docs # headless browser run (needs: npm i -D 
 Double-click `index.html`. That's it: classic `<script>` files and one global namespace (`AS`), no modules, no build step, no CDNs, no downloaded assets. Every sprite, the pixel font and all sound and music are generated in code. A local web server works too (`python3 -m http.server`).
 
 ## Publishing on GitHub Pages
+
+Each deploy stamps the commit into every script and stylesheet URL (`?v=<commit>`), so browsers always load the new version instead of a cached one.
 
 1. Push to `main` on GitHub.
 2. Settings → Pages → Source: **GitHub Actions**.

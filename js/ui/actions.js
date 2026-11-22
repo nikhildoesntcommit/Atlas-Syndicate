@@ -89,10 +89,26 @@
   /* ---------- autosave ---------- */
   Act.autosave = function () {
     const run = G.run;
-    if (!run || G.mode !== 'play' || run.over || run.phase !== 'play') return;
+    if (!run || G.mode !== 'play' || run.over || run.phase !== 'play' || run.noSave) return;
     try { Store.set('save', { v: 5, at: Date.now(), data: S.serialize(run) }); } catch (e) { /* storage full: ignore */ }
   };
   Act.clearSave = () => Store.remove('save');
+  /** Cheap check (no parsing) for whether a saved game exists. */
+  Act.hasSave = function () {
+    const k = Store.prefix + 'save';
+    try { if (globalThis.localStorage) return globalThis.localStorage.getItem(k) !== null; } catch (e) { /* fall through */ }
+    return k in Store.mem;
+  };
+  /** Settings > Saved games: delete the autosave (and anything older versions left behind). */
+  Act.deleteSaves = function () {
+    Act.clearSave();
+    try {
+      const ls = globalThis.localStorage, old = [];
+      for (let i = 0; ls && i < ls.length; i++) { const k = ls.key(i); if (/^atlas[1-4]\./.test(k)) old.push(k); }
+      for (const k of old) ls.removeItem(k);
+    } catch (e) { /* storage blocked: nothing to clear */ }
+    G.saveInfo = null;
+  };
   Act.savedRun = function () {
     const s = Store.get('save', null);
     if (!s || s.v !== 5 || !s.data) return null;

@@ -136,7 +136,7 @@
 
   /* ---------- settings ---------- */
   function drawSettings(ctx) {
-    const p = panel(ctx, 300, 186, 'SETTINGS');
+    const p = panel(ctx, 300, 200, 'SETTINGS');
     const s = G.settings;
     let y = p.y + 26;
     const row = (label, value, fn, tip) => { TS(ctx, label, p.x + 14, y + 3, 7); G.button(ctx, p.x + p.w - 104, y, 90, 11, value, () => { AS.Sfx.play('click'); fn(); }, { tip }); y += 14; };
@@ -155,6 +155,19 @@
     vol('EFFECTS VOLUME', 'sfx');
     row('SOUND', s.mute ? 'MUTED' : 'ON', () => { s.mute = !s.mute; Act.saveSettings(); });
     row('TUTORIAL', AS.Store.get('tutorialDone', false) ? 'REPLAY NEXT GAME' : 'ON NEXT GAME', () => { AS.Store.set('tutorialDone', false); G.showToast('THE TUTORIAL WILL RUN IN YOUR NEXT GAME', 13); });
+    // saved games: two clicks (DELETE, then CONFIRM within 3 s) so a stray click never wipes a game
+    const hasSave = Act.hasSave(), arm = G.delArm && G.time < G.delArm;
+    const inGame = G.mode === 'play' && G.run && !G.run.over;
+    TS(ctx, 'SAVED GAME', p.x + 14, y + 3, 7);
+    G.button(ctx, p.x + p.w - 104, y, 90, 11, arm ? 'CONFIRM?' : hasSave ? 'DELETE' : 'NONE', () => {
+      if (!arm) { G.delArm = G.time + 3; AS.Sfx.play('warning'); return; }
+      G.delArm = 0;
+      Act.deleteSaves();
+      if (inGame) G.run.noSave = true;   // also stop autosaving the game in progress
+      AS.Sfx.play('remove');
+      G.showToast('SAVED GAME DELETED', 13);
+    }, { disabled: !hasSave && !arm, col: arm ? 17 : undefined, tip: 'DELETE YOUR SAVED GAME FROM THIS BROWSER (CLICK TWICE). ' + (inGame ? 'THE GAME IN PROGRESS STOPS AUTOSAVING.' : 'CONTINUE DISAPPEARS FROM THE MENU.') });
+    y += 14;
     backBtn(ctx, p);
   }
 
