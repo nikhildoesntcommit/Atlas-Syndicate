@@ -60,7 +60,14 @@
     return Math.max(0, Math.min(want, cap) - B.stock[g] - B.incoming[g]);
   };
   /** What A can spare of g; goods Prime holds for a connected world count as spare on trips to that world. */
-  S.surplus = (A, g, B) => (A.site ? 0 : Math.max(0, A.stock[g] - A.keep[g] + (B && A.prime && A.hold ? Math.min(A.hold[g], B.need[g]) : 0)));
+  S.surplus = function (A, g, B) {
+    if (A.site) return 0;
+    const extra = Math.max(0, A.stock[g] - A.keep[g]);
+    if (!(B && A.prime && A.hold)) return extra;
+    // goods earmarked for B (held back from local use) are always free to go to B
+    const earmarked = Math.min(A.stock[g], A.hold[g], B.need[g]);
+    return Math.min(A.stock[g], earmarked + extra);
+  };
 
   S.planCargo = function (run, A, B, capLeft) {
     const items = [];
@@ -105,7 +112,7 @@
       if (!r) { S.settleFreighter(run, f); continue; }
       if ((r.halted > 0 || run.flareT > 0) && f.state !== 'unload') continue;
       if (f.state === 'transit') {
-        f.prog += U.safeDiv(FL.speed * run.mods.speed * dt, f.dist, 1);
+        f.prog += U.safeDiv(FL.speed * run.mods.speed * (run.boostT > 0 ? C.abilities.boost.mult : 1) * dt, f.dist, 1);
         if (f.prog >= 1) { f.prog = 1; f.at = f.to; f.state = 'unload'; f.timer = FL.unloadTime; run.fx.push({ type: 'arrive', fid: f.id, id: f.at }); }
       } else if (f.state === 'unload') {
         f.timer -= dt;

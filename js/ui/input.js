@@ -1,10 +1,14 @@
 /* ATLAS SYNDICATE v4 — ui/input.js
-   Mouse, keyboard and touch. Tap = click, drag from a world = route, drag space = pan, pinch = zoom. */
+   Mouse, keyboard and touch.
+   - Drag anywhere = pan, with momentum when you let go. Tap/click = select. Double-click = zoom in there.
+   - Wheel / pinch = smooth zoom. WASD / arrows = smooth, accelerating pan.
+   - New routes: select a world, press NEW ROUTE, then click the other world (Esc cancels). */
 (function (AS) {
   'use strict';
 
-  const U = AS.U, S = AS.S, G = AS.G, W = AS.World, Act = AS.Act;
+  const S = AS.S, G = AS.G, W = AS.World, Act = AS.Act;
   const In = AS.Input = {};
+  let lastTap = { t: -9, x: 0, y: 0 };
 
   function canvasPos(e) {
     const r = G.canvas.getBoundingClientRect();
@@ -24,7 +28,7 @@
     if (G.pointers.size === 2 && playing()) {   // pinch
       const [a, b] = [...G.pointers.values()];
       G.pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1 };
-      G.drag = null; G.pan = null;
+      G.pan = null;
       return;
     }
     if (G.pointers.size > 1) return;
@@ -35,15 +39,11 @@
       if (e.button === 0) btn.fn();
       return;
     }
-    if (!playing()) return;
-    const run = G.run;
-    if (e.button === 1 || (e.button === 2 && inMap(p))) { G.pan = { sx: p.x, sy: p.y, cx: G.cam.x, cy: G.cam.y, moved: false, button: e.button }; return; }
-    if (e.button !== 0 || run.over) return;
+    if (!playing() || !inMap(p)) return;
     G.popup = null;
-    if (!inMap(p)) return;
-    const body = W.bodyAt(run, G.wm.x, G.wm.y);
-    if (body) { G.drag = { from: body, sx: p.x, sy: p.y, moved: false }; return; }
-    G.pan = { sx: p.x, sy: p.y, cx: G.cam.x, cy: G.cam.y, moved: false, button: 0 };
+    G.stopCam();
+    // every drag on the map pans; whether it was a tap is decided on release
+    G.pan = { sx: p.x, sy: p.y, cx: G.cam.x, cy: G.cam.y, moved: false, button: e.button, samples: [[performance.now(), p.x, p.y]] };
   }
   function move(e) {
     const p = canvasPos(e);
@@ -54,51 +54,70 @@
       const [a, b] = [...G.pointers.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y);
       const r = d / G.pinch.d0;
-      if (r > 1.35 || r < 0.74) { G.zoomStep(r > 1 ? 1 : -1, (a.x + b.x) / 2, (a.y + b.y) / 2); G.pinch.d0 = d; }
+      if (r > 1.3 || r < 0.77) { G.zoomStep(r > 1 ? 1 : -1, (a.x + b.x) / 2, (a.y + b.y) / 2); G.pinch.d0 = d; }
       return;
     }
-    const thr = G.touch ? 8 : 4;
-    if (G.drag && Math.hypot(p.x - G.drag.sx, p.y - G.drag.sy) > thr) G.drag.moved = true;
     if (G.pan) {
-      if (Math.hypot(p.x - G.pan.sx, p.y - G.pan.sy) > thr - 1) G.pan.moved = true;
-      if (G.pan.moved) { G.cam.gx = null; G.cam.x = G.pan.cx - (p.x - G.pan.sx) / G.cam.z; G.cam.y = G.pan.cy - (p.y - G.pan.sy) / G.cam.z; G.clampCam(); }
+      if (Math.hypot(p.x - G.pan.sx, p.y - G.pan.sy) > (G.touch ? 6 : 3)) G.pan.moved = true;
+      if (G.pan.moved) {
+        G.cam.x = G.pan.cx - (p.x - G.pan.sx) / G.cam.zr;
+        G.cam.y = G.pan.cy - (p.y - G.pan.sy) / G.cam.zr;
+        G.clampCam();
+        G.pan.samples.push([performance.now(), p.x, p.y]);
+        if (G.pan.samples.length > 6) G.pan.samples.shift();
+      }
     }
   }
   function up(e) {
     const p = canvasPos(e);
     G.pointers.delete(e.pointerId);
     G.mouse.down = false;
-    if (G.pinch) { if (G.pointers.size < 2) G.pinch = null; G.drag = null; G.pan = null; return; }
+    if (G.pinch) { if (G.pointers.size < 2) G.pinch = null; G.pan = null; return; }
     G.mouse.x = p.x; G.mouse.y = p.y;
     G.wm = G.toWorld(p.x, p.y);
     if (G.touch) G.mouse.inside = false;
-    const run = G.run;
-    if (G.pan) {
-      const pan = G.pan;
-      G.pan = null;
-      if (!pan.moved && playing() && inMap(p)) {
-        const r = W.routeAt(run, G.wm.x, G.wm.y);
-        if (pan.button === 2) { if (r) Act.removeRoute(r); else { G.sel = null; G.popup = null; } }
-        else if (pan.button === 0) { if (r) { G.sel = { kind: 'route', id: r.id }; AS.Sfx.play('click'); } else G.sel = null; }
-      }
+    const pan = G.pan;
+    G.pan = null;
+    if (!pan || !playing()) return;
+    if (pan.moved) {   // flick: keep gliding
+      const sm = pan.samples, a = sm[0], b = sm[sm.length - 1], dt = (b[0] - a[0]) / 1000;
+      if (dt > 0 && performance.now() - b[0] < 80) { G.cam.vx = -(b[1] - a[1]) / dt / G.cam.zr; G.cam.vy = -(b[2] - a[2]) / dt / G.cam.zr; }
       return;
     }
-    if (!G.drag || !playing()) { G.drag = null; return; }
-    const from = G.drag.from, target = W.bodyAt(run, G.wm.x, G.wm.y);
-    if (G.drag.moved && target && target !== from) {
-      const res = Act.do('route', { a: from.id, b: target.id });
-      if (res.ok) {
-        G.sel = { kind: 'route', id: res.route.id };
-        if (!S.routeFreighters(run, res.route).length) G.showToast('ROUTE OPEN - PRESS + TO ADD A FREIGHTER', 13);
-      }
-    } else if (!G.drag.moved) { G.sel = { kind: 'body', id: from.id }; AS.Sfx.play('click'); }
-    G.drag = null;
+    tap(p, pan.button);
+  }
+  function tap(p, button) {
+    const run = G.run;
+    const body = W.bodyAt(run, G.wm.x, G.wm.y);
+    const now = G.time;
+    const dbl = now - lastTap.t < 0.35 && Math.hypot(p.x - lastTap.x, p.y - lastTap.y) < 8;
+    lastTap = { t: now, x: p.x, y: p.y };
+    if (G.link) {   // finishing a new route
+      const from = S.getBody(run, G.link.from);
+      if (body && from && body !== from) {
+        const res = Act.do('route', { a: from.id, b: body.id });
+        if (res.ok) { G.sel = { kind: 'route', id: res.route.id }; G.showToast('ROUTE OPEN - A FREIGHTER IS ON ITS WAY', 13); }
+      } else AS.Sfx.play('click');
+      G.link = null;
+      return;
+    }
+    if (button === 2) { const r = W.routeAt(run, G.wm.x, G.wm.y); if (r) Act.removeRoute(r); else { G.sel = null; G.popup = null; } return; }
+    if (dbl) {   // double-click: zoom in on that spot (or that world)
+      if (body) G.focusOn(body.sx, body.sy, Math.min(4, G.cam.z + 1)); else G.zoomStep(1, p.x, p.y);
+      return;
+    }
+    if (body) { G.sel = { kind: 'body', id: body.id }; AS.Sfx.play('click'); return; }
+    const r = W.routeAt(run, G.wm.x, G.wm.y);
+    if (r) { G.sel = { kind: 'route', id: r.id }; AS.Sfx.play('click'); } else G.sel = null;
   }
   function wheel(e) {
     e.preventDefault();
     if (!playing()) return;
     const p = canvasPos(e);
     if (!inMap(p)) return;
+    const now = performance.now();
+    if (now - (In.lastWheel || 0) < 110) return;   // one zoom step per wheel notch, even on trackpads
+    In.lastWheel = now;
     G.zoomStep(e.deltaY < 0 ? 1 : -1, p.x, p.y);
   }
   const PANK = { ArrowLeft: 'l', a: 'l', A: 'l', ArrowRight: 'r', d: 'r', D: 'r', ArrowUp: 'u', w: 'u', W: 'u', ArrowDown: 'dn', s: 'dn', S: 'dn' };
@@ -117,17 +136,19 @@
     else if (k === '1' || k === '2' || k === '3') Act.setSpeed(AS.CONFIG.sim.hudSpeeds[+k - 1]);
     else if (k === 'm' || k === 'M') Act.toggleMute();
     else if (k === 't' || k === 'T') Act.toggleTips();
+    else if (k === 'b' || k === 'B') Act.boost();
     else if (k === 'f' || k === 'F') Act.buyFreighter();
     else if (k === 'q' || k === 'Q') G.zoomStep(-1);
     else if (k === 'e' || k === 'E') G.zoomStep(1);
     else if (k === 'r' || k === 'R') G.fitView(run, true);
     else if (k === 'Escape') {
-      if (G.popup) G.popup = null;
-      else if (AS.Onboard.active() && AS.Onboard.st.step < 4) AS.Onboard.skip();
+      if (G.link) G.link = null;
+      else if (G.popup) G.popup = null;
+      else if (AS.Onboard.active() && AS.Onboard.st.step < 3) AS.Onboard.skip();
       else if (G.sel) G.sel = null;
       else Act.openPause();
-    } else if (k === '+' || k === '=' || k === 'Add') { const r = selRoute(); if (r) Act.freighters(r, 1); else G.showToast('SELECT A ROUTE FIRST'); }
-    else if (k === '-' || k === '_' || k === 'Subtract') { const r = selRoute(); if (r) Act.freighters(r, -1); else G.showToast('SELECT A ROUTE FIRST'); }
+    } else if (k === '+' || k === '=' || k === 'Add') { const r = selRoute(); if (r) Act.freighters(r, 1); else G.zoomStep(1); }
+    else if (k === '-' || k === '_' || k === 'Subtract') { const r = selRoute(); if (r) Act.freighters(r, -1); else G.zoomStep(-1); }
     else if (k === 'Delete' || k === 'Backspace') { const r = selRoute(); if (r) { Act.removeRoute(r); e.preventDefault(); } }
   }
   function selRoute() { return G.sel && G.sel.kind === 'route' && G.run ? S.getRoute(G.run, G.sel.id) : null; }
@@ -137,7 +158,7 @@
     c.addEventListener('pointerdown', down);
     c.addEventListener('pointermove', move);
     c.addEventListener('pointerup', up);
-    c.addEventListener('pointercancel', e => { G.pointers.delete(e.pointerId); G.drag = null; G.pan = null; G.pinch = null; });
+    c.addEventListener('pointercancel', e => { G.pointers.delete(e.pointerId); G.pan = null; G.pinch = null; });
     c.addEventListener('pointerleave', () => { if (!G.mouse.down) G.mouse.inside = false; });
     c.addEventListener('contextmenu', e => e.preventDefault());
     c.addEventListener('wheel', wheel, { passive: false });
@@ -151,14 +172,15 @@
     });
     if (kbd) kbd.addEventListener('keydown', e => { if (e.key === 'Enter' && G.focusField) { G.focusField.onEnter(G.focusField.value.trim()); kbd.blur(); } });
   };
+  /** Keyboard panning: velocity eases towards the held direction, so it accelerates and coasts smoothly. */
   In.update = function (dt) {
     if (!playing()) return;
-    const sp = AS.CONFIG.camera.panSpeed * dt / G.cam.z;
-    if (G.keys.l || G.keys.r || G.keys.u || G.keys.dn) G.cam.gx = null;
-    if (G.keys.l) G.cam.x -= sp;
-    if (G.keys.r) G.cam.x += sp;
-    if (G.keys.u) G.cam.y -= sp;
-    if (G.keys.dn) G.cam.y += sp;
-    G.clampCam();
+    const k = G.keys, sp = AS.CONFIG.camera.panSpeed * 1.4 / G.cam.zr;
+    const tx = ((k.r ? 1 : 0) - (k.l ? 1 : 0)) * sp, ty = ((k.dn ? 1 : 0) - (k.u ? 1 : 0)) * sp;
+    if (tx || ty) {
+      G.cam.tc = null; G.cam.anchor = null;
+      const a = 1 - Math.exp(-dt * 9);
+      G.cam.vx += (tx - G.cam.vx) * a; G.cam.vy += (ty - G.cam.vy) * a;
+    }
   };
 })(globalThis.AS = globalThis.AS || {});

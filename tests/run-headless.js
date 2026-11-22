@@ -20,7 +20,7 @@ const AS = globalThis.AS, S = AS.S, U = AS.U, C = AS.CONFIG;
 const args = process.argv.slice(2);
 const mode = args[0] && !args[0].startsWith('--') ? args[0] : 'all';
 const opt = (k, d) => { const i = args.indexOf('--' + k); return i >= 0 ? args[i + 1] : d; };
-const NSEEDS = +opt('seeds', 10), NFUZZ = +opt('fuzz', 40), LIMIT = +opt('limit', 45) * 60;
+const NSEEDS = +opt('seeds', 10), NFUZZ = +opt('fuzz', 40), LIMIT = +opt('limit', 50) * 60;
 const results = { balance: null, fuzz: null, replay: null, selftest: null };
 let failed = false;
 
@@ -38,21 +38,21 @@ function balance() {
     for (const ch of AS.CHARTER_KEYS) for (const s of seeds) {
       const r = AS.Bot.simulate(s, ch, skill, LIMIT, { check: true });
       if (r.fails.length) { failed = true; console.log('  FAIL ' + skill + ' ' + ch + ' seed ' + s + ': ' + r.fails.join('; ')); }
-      rows.push({ ch, seed: s, t: Math.round(r.t), won: r.won, reached: r.megaReached, done: r.megaDone, doneAt: Math.round(r.doneAt), stage: r.stage, score: r.score, lost: r.over && !r.won, minConf: Math.round(r.minConf) });
+      rows.push({ ch, seed: s, t: Math.round(r.t), won: r.won, reached: r.sysDone >= 1, sys2: r.sysDone >= 2, done: r.won, doneAt: Math.round(r.doneAt), sys: r.sys + 1, score: r.score, lost: r.over && !r.won, minConf: Math.round(r.minConf) });
     }
     const n = rows.length, lost = rows.filter(r => r.lost), done = rows.filter(r => r.done);
     const summary = {
       runs: n, survivalMedianMin: +(med(rows.map(r => r.t)) / 60).toFixed(1), survivalMeanMin: +(avg(rows.map(r => r.t)) / 60).toFixed(1),
-      lossRate: pct(lost.length, n), reachRate: pct(rows.filter(r => r.reached).length, n), completionRate: pct(done.length, n),
-      completionMedianMin: done.length ? +(med(done.map(r => r.doneAt)) / 60).toFixed(1) : null,
-      completionRangeMin: done.length ? [+(Math.min(...done.map(r => r.doneAt)) / 60).toFixed(1), +(Math.max(...done.map(r => r.doneAt)) / 60).toFixed(1)] : null,
+      lossRate: pct(lost.length, n), firstGateRate: pct(rows.filter(r => r.reached).length, n), secondGateRate: pct(rows.filter(r => r.sys2).length, n), winRate: pct(done.length, n),
+      winMedianMin: done.length ? +(med(done.map(r => r.doneAt)) / 60).toFixed(1) : null,
+      winRangeMin: done.length ? [+(Math.min(...done.map(r => r.doneAt)) / 60).toFixed(1), +(Math.max(...done.map(r => r.doneAt)) / 60).toFixed(1)] : null,
       lossMedianMin: lost.length ? +(med(lost.map(r => r.t)) / 60).toFixed(1) : null,
       scoreMedian: med(rows.map(r => r.score)), ms: Date.now() - t0,
       perCharter: {},
     };
     for (const ch of AS.CHARTER_KEYS) {
       const rr = rows.filter(r => r.ch === ch);
-      summary.perCharter[ch] = { reach: pct(rr.filter(r => r.reached).length, rr.length), done: pct(rr.filter(r => r.done).length, rr.length), lost: pct(rr.filter(r => r.lost).length, rr.length), doneMedianMin: rr.some(r => r.done) ? +(med(rr.filter(r => r.done).map(r => r.doneAt)) / 60).toFixed(1) : null };
+      summary.perCharter[ch] = { gate1: pct(rr.filter(r => r.reached).length, rr.length), gate2: pct(rr.filter(r => r.sys2).length, rr.length), won: pct(rr.filter(r => r.done).length, rr.length), lost: pct(rr.filter(r => r.lost).length, rr.length), winMedianMin: rr.some(r => r.done) ? +(med(rr.filter(r => r.done).map(r => r.doneAt)) / 60).toFixed(1) : null };
     }
     out[skill] = { summary, rows };
     console.log('  ' + skill.padEnd(8) + JSON.stringify(Object.assign({}, summary, { perCharter: undefined })));
@@ -79,7 +79,7 @@ function fuzz() {
           actionsTried++;
           const b = pick(cur.bodies), b2 = pick(cur.bodies), r = pick(cur.routes), c = pick(cur.contracts);
           const types = AS.FAC_KEYS.concat(['bogus']);
-          switch (Math.floor(R() * 12)) {
+          switch (Math.floor(R() * 15)) {
             case 0: S.act(cur, 'claim', { id: b.id }); break;
             case 1: S.act(cur, 'build', { id: b.id, slot: Math.floor(R() * 8) - 1, type: pick(types) }); break;
             case 2: S.act(cur, 'demolish', { id: b.id, slot: Math.floor(R() * 7) }); break;
@@ -92,9 +92,12 @@ function fuzz() {
             case 9: S.act(cur, 'route', { a: S.prime(cur).id, b: b.id }); break;
             case 10: S.act(cur, 'claim', { id: 99999 }); S.act(cur, 'unroute', { id: -1 }); break;
             case 11: if (R() < 0.05) cur.credits -= 3000 * R(); break;   // force debt now and then
+            case 12: S.act(cur, 'boost'); break;
+            case 13: S.act(cur, 'deflect', { id: b.id }); if (cur.pending[0]) S.act(cur, 'deflect', { id: cur.pending[0].id }); break;
+            case 14: if (R() < 0.02 && !cur.over && cur.sys < 2) { cur.mega.state = 'done'; cur.warpAt = cur.t + 1; } break;   // force a warp
           }
         }
-        if (k % 5 === 1 && i === 20 * 60 * 9) cur.t = Math.max(cur.t, C.mega.unlockAt - 1);   // jump some runs to the megaproject
+        if (k % 5 === 1 && i === 20 * 60 * 4) cur.t = Math.max(cur.t, cur.sysStart + S.sysCfg(cur).unlock - 1);   // jump some runs to the gate
         S.step(cur, C.sim.step);
         cur.fx.length = 0;
         stepsRun++;

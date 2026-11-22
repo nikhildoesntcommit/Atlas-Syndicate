@@ -42,8 +42,8 @@
     const w = G.W, h = G.H;
     for (const s of W.stars) {
       const par = [0.06, 0.15, 0.3][s.layer];
-      let x = (s.x - time * [0.4, 1.0, 2.2][s.layer] - G.cam.x * par * G.cam.z) % w; if (x < 0) x += w;
-      let y = (s.y - G.cam.y * par * G.cam.z) % h; if (y < 0) y += h;
+      let x = (s.x - time * [0.4, 1.0, 2.2][s.layer] - G.cam.x * par * G.cam.zr) % w; if (x < 0) x += w;
+      let y = (s.y - G.cam.y * par * G.cam.zr) % h; if (y < 0) y += h;
       ctx.fillStyle = PAL[Math.sin(time * 1.3 + s.tw) > 0.94 ? 7 : s.col];
       ctx.fillRect(x | 0, y | 0, 1, 1);
     }
@@ -67,11 +67,11 @@
     return P.c;
   }
   function drawBelt(ctx, run, time) {
-    if (!W.belt.length || W.beltSeed !== run.seed) {
-      const r = U.rng(run.seed ^ 55);
+    if (!W.belt.length || W.beltSeed !== run.seed + ':' + run.sys) {
+      const r = U.rng((run.seed + run.sys * 977) ^ 55);
       W.belt = [];
       for (let i = 0; i < 300; i++) W.belt.push({ a: r() * TAU, dr: (r() - 0.5) * 16, s: r() < 0.12 ? 2 : 1, c: r() < 0.3 ? 5 : r() < 0.6 ? 4 : 3, w: 0.8 + r() * 0.4 });
-      W.beltSeed = run.seed;
+      W.beltSeed = run.seed + ':' + run.sys;
     }
     const om = TAU / C.map.primePeriod * Math.pow(C.map.refRadius / run.beltR, 1.5);
     for (const k of W.belt) {
@@ -154,13 +154,13 @@
     for (const b of run.bodies) {
       if (!b.found) continue;
       const d = Math.hypot(wx - b.sx, wy - b.sy);
-      const reach = b.site ? 24 : b.size + 3 + 5 / G.cam.z + (G.touch ? 6 / G.cam.z : 0);
+      const reach = b.site ? 24 : b.size + 3 + 5 / G.cam.zr + (G.touch ? 6 / G.cam.zr : 0);
       if (d <= reach && d < bd) { bd = d; best = b; }
     }
     return best;
   };
   W.routeAt = function (run, wx, wy) {
-    let best = null, bd = 3.5 / G.cam.z + 0.5 + (G.touch ? 4 / G.cam.z : 0);
+    let best = null, bd = 3.5 / G.cam.zr + 0.5 + (G.touch ? 4 / G.cam.zr : 0);
     for (const r of run.routes) {
       const A = S.getBody(run, r.a), B = S.getBody(run, r.b);
       if (!A || !B) continue;
@@ -292,10 +292,12 @@
     }
     drawBelt(ctx, run, time);
     for (const r of run.routes) { const A = S.getBody(run, r.a), B = S.getBody(run, r.b); if (A && B) W.drawRail(ctx, A.sx, A.sy, B.sx, B.sy, routeStyle(run, r), time); }
-    if (interactive && G.drag && G.drag.moved) {
-      const a = G.drag.from, t = W.bodyAt(run, G.wm.x, G.wm.y);
-      const ok = t && t !== a && t.claimed && !S.routeBetween(run, a, t) && run.credits >= S.routeCost(a, t);
-      W.drawRail(ctx, a.sx, a.sy, t && t !== a ? t.sx : G.wm.x, t && t !== a ? t.sy : G.wm.y, !t || t === a ? 'valid' : ok ? 'valid' : 'invalid', time);
+    if (interactive && G.link) {   // NEW ROUTE: a line follows the cursor until you click the other world
+      const a = S.getBody(run, G.link.from), t = W.bodyAt(run, G.wm.x, G.wm.y);
+      if (a) {
+        const ok = t && t !== a && t.claimed && !S.routeBetween(run, a, t) && run.credits >= S.routeCost(a, t);
+        W.drawRail(ctx, a.sx, a.sy, t && t !== a ? t.sx : G.wm.x, t && t !== a ? t.sy : G.wm.y, !t || t === a ? 'valid' : ok ? 'valid' : 'invalid', time);
+      } else G.link = null;
     }
     const vis = run.bodies.filter(b => b.found);
     const back = vis.filter(b => b.z < 0).sort((p, q) => p.z - q.z), front = vis.filter(b => b.z >= 0).sort((p, q) => p.z - q.z);
@@ -344,7 +346,7 @@
     const hb = interactive ? W.hoverBody(run) : null;
     for (const b of run.bodies.filter(x => x.found).sort((p, q) => rank(q) - rank(p))) {
       const s = G.toScreen(b.sx, b.sy);
-      const rad = (b.site ? 26 : b.size + 4) * G.cam.z;
+      const rad = (b.site ? 26 : b.size + 4) * G.cam.zr;
       if (s.x < -60 || s.x > G.W + 60 || s.y < top - 30 || s.y > bottom + 20) {
         if (b.foundAt > 0 && run.t - b.foundAt < 20 && interactive) drawEdgeMarker(ctx, s, b, time);
         continue;
@@ -378,28 +380,33 @@
         const left = Math.ceil(pend.at - run.t);
         D.hazard(ctx, Math.round(s.x - 16), Math.round(s.y - rad - 12), 32, 2, 17, time * 12);
         D.text(ctx, 'IMPACT ' + left, s.x, Math.round(s.y - rad - 9), Math.floor(time * 4) % 2 ? 17 : 13, { align: 'center' });
+        if (interactive) {
+          const cost = S.deflectCost(run);
+          G.button(ctx, Math.round(s.x - 30), Math.round(s.y - rad - 26), 60, 11, 'DEFLECT ' + cost, () => AS.Act.deflect(b), { primary: run.credits >= cost, disabled: run.credits < cost, tip: 'SHOOT DOWN THE METEOR BEFORE IT HITS. COSTS ' + cost + ' CREDITS.' });
+        }
       }
       if (interactive) {
         const deps = ['ore', 'ice', 'gas'].filter(k => b.dep[k]).map(k => AS.GOODS[k].name + ' ' + b.dep[k].toFixed(1)).join(', ');
         const tr = (b.traits || []).map(t => AS.TRAITS[t].name + ': ' + AS.TRAITS[t].desc).join(' ');
         G.tip(s.x - rad, s.y - rad, rad * 2, rad * 2, b.site
-          ? AS.CONFIG.mega.name + ': DELIVER THE GOODS EACH STAGE NEEDS. CLICK FOR PROGRESS. DRAG A ROUTE FROM ANY OF YOUR WORLDS TO IT.'
+          ? AS.CONFIG.mega.name + ': DELIVER THE GOODS EACH STAGE NEEDS. FINISH IT TO WARP TO THE NEXT SYSTEM. CLICK FOR PROGRESS.'
           : b.claimed
-            ? b.name + ': ' + Math.floor(b.pop) + '/' + S.housing(run, b) + ' COLONISTS, ' + (b.starving ? 'STARVING!' : 'FED') + '. CLICK TO MANAGE. DRAG TO ANOTHER WORLD TO OPEN A ROUTE. ' + tr
+            ? b.name + ': ' + Math.floor(b.pop) + '/' + S.housing(run, b) + ' COLONISTS, ' + (b.starving ? 'STARVING!' : 'FED') + '. CLICK TO MANAGE IT. ' + tr
             : b.name + ' (' + b.blurb + '): ' + (deps || 'NO DEPOSITS') + '. CLICK TO SURVEY AND CLAIM. ' + tr);
       }
     }
     if (interactive) {
       const r = !hb && G.mouse.y < bottom && G.mouse.y > top ? W.routeAt(run, G.wm.x, G.wm.y) : null;
-      if (r) G.tip(G.mouse.x - 3, G.mouse.y - 3, 6, 6, 'ROUTE ' + S.getBody(run, r.a).name + ' - ' + S.getBody(run, r.b).name + ': ' + S.routeFreighters(run, r).length + ' FREIGHTERS. CLICK TO MANAGE, RIGHT-CLICK TO CLOSE.');
+      if (r) G.tip(G.mouse.x - 3, G.mouse.y - 3, 6, 6, 'ROUTE ' + S.getBody(run, r.a).name + ' - ' + S.getBody(run, r.b).name + ': ' + S.routeFreighters(run, r).length + ' FREIGHTERS. CLICK TO MANAGE IT.');
     }
     for (const fl of G.floats) if (fl.run === run) {
       const s = G.toScreen(fl.x, fl.y);
       const k = fl.t / fl.max;
       if (s.y > top && s.y < bottom) D.text(ctx, fl.text, s.x, s.y - (1 - k) * 12, fl.col, { align: 'center', big: fl.big });
     }
-    if (interactive && G.drag && G.drag.moved) {
-      const a = G.drag.from, t = W.bodyAt(run, G.wm.x, G.wm.y);
+    if (interactive && G.link) {
+      const a = S.getBody(run, G.link.from), t = W.bodyAt(run, G.wm.x, G.wm.y);
+      if (!a) return;
       let label = '', lcol = 17;
       if (t && t !== a) {
         const cost = S.routeCost(a, t);
@@ -407,7 +414,7 @@
         else if (S.routeBetween(run, a, t)) label = 'ROUTE EXISTS';
         else if (run.credits < cost) label = 'NEED ' + cost + ' CR';
         else { label = 'OPEN ROUTE ' + cost + ' CR'; lcol = 13; }
-      } else label = 'DROP ON ONE OF YOUR WORLDS';
+      } else label = 'CLICK ONE OF YOUR WORLDS (ESC CANCELS)';
       const lw = D.tw(label) + 6, lx = U.clamp(Math.round(G.mouse.x + 8), 2, G.W - lw - 2), ly = U.clamp(Math.round(G.mouse.y - 12), top + 2, bottom - 10);
       D.frame(ctx, lx, ly, lw, 9, 0, lcol);
       D.text(ctx, label, lx + 3, ly + 2, lcol, { shadow: false });

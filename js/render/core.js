@@ -11,7 +11,7 @@
     sel: null, selT: 0, drag: null, pan: null, pinch: null, popup: null, pointers: new Map(),
     mouse: { x: -99, y: -99, inside: false, down: false }, wm: { x: -99, y: -99 }, touch: false,
     btns: [], tipRegions: [], tipHover: { text: '', t: 0 }, pressed: null, focusField: null,
-    cam: { x: 0, y: 0, z: 1, gx: null, gy: null }, keys: {},
+    cam: { x: 0, y: 0, z: 1, zr: 1, vx: 0, vy: 0, tc: null, anchor: null }, keys: {}, link: null,
     paused: false, speed: 1, urlSpeed: 1, acc: 0, time: 0, shake: 0, flash: 0, parts: [], floats: [], toast: null,
     disp: { credits: 0, conf: 100, q: 0 }, cards: [], seen: {}, advice: null, adviceT: 0,
     settings: null, name: 'PLAYER', overTimer: 0, finale: null, ff: null, attract: null, notices: [],
@@ -43,50 +43,83 @@
     if (AS.World && AS.World.onResize) AS.World.onResize();
   };
 
-  /* ---------- camera ---------- */
-  G.toWorld = (x, y) => ({ x: x / G.cam.z + G.cam.x, y: y / G.cam.z + G.cam.y });
-  G.toScreen = (x, y) => ({ x: (x - G.cam.x) * G.cam.z, y: (y - G.cam.y) * G.cam.z });
+  /* ---------- camera: smooth zoom (animated between whole-number levels), glides, momentum ---------- */
+  // cam.z = target zoom level (whole number); cam.zr = zoom being drawn right now (animates towards cam.z).
+  G.mapMidY = () => (G.HUD_H + G.mapBottom()) / 2;
+  G.toWorld = (x, y) => ({ x: x / G.cam.zr + G.cam.x, y: y / G.cam.zr + G.cam.y });
+  G.toScreen = (x, y) => ({ x: (x - G.cam.x) * G.cam.zr, y: (y - G.cam.y) * G.cam.zr });
+  G.camCenter = () => ({ x: G.cam.x + G.W / 2 / G.cam.zr, y: G.cam.y + G.mapMidY() / G.cam.zr });
+  G.setCenter = (cx, cy) => { G.cam.x = cx - G.W / 2 / G.cam.zr; G.cam.y = cy - G.mapMidY() / G.cam.zr; };
   G.clampCam = function () {
-    const z = G.cam.z, M = C.camera.margin;
+    const z = G.cam.zr, M = C.camera.margin;
     const vw = G.W / z, vh = (G.mapBottom() - G.HUD_H) / z;
     const cx = C.map.cx, cy = C.map.cy;
-    G.cam.x = U.clamp(G.cam.x, cx - 260 - M / z, cx + 260 + M / z - vw);
-    G.cam.y = U.clamp(G.cam.y, cy - 120 - M / z - G.HUD_H / z, cy + 120 + M / z - vh);
+    const x0 = cx - 260 - M / z, x1 = cx + 260 + M / z - vw, y0 = cy - 120 - M / z - G.HUD_H / z, y1 = cy + 120 + M / z - vh;
+    if (G.cam.x < x0 || G.cam.x > x1) G.cam.vx = 0;
+    if (G.cam.y < y0 || G.cam.y > y1) G.cam.vy = 0;
+    G.cam.x = x1 < x0 ? (x0 + x1) / 2 : U.clamp(G.cam.x, x0, x1);
+    G.cam.y = y1 < y0 ? (y0 + y1) / 2 : U.clamp(G.cam.y, y0, y1);
   };
+  G.stopCam = () => { G.cam.vx = 0; G.cam.vy = 0; G.cam.tc = null; G.cam.anchor = null; };
+  /** Zoom to a whole-number level, keeping the point under (sx, sy) fixed while it animates. */
   G.zoomAt = function (sx, sy, z) {
     const Z = C.camera.zooms;
     z = U.clamp(Math.round(z), Z[0], Z[Z.length - 1]);
     if (z === G.cam.z) return;
-    const w = G.toWorld(sx, sy);
+    G.stopCam();
+    G.cam.anchor = { w: G.toWorld(sx, sy), sx, sy };
     G.cam.z = z;
-    G.cam.x = w.x - sx / z; G.cam.y = w.y - sy / z;
-    G.cam.gx = null; G.cam.gy = null;
-    G.clampCam();
   };
   G.zoomStep = function (d, sx, sy) {
-    G.zoomAt(sx === undefined ? G.W / 2 : sx, sy === undefined ? (G.HUD_H + G.mapBottom()) / 2 : sy, G.cam.z + d);
+    G.zoomAt(sx === undefined ? G.W / 2 : sx, sy === undefined ? G.mapMidY() : sy, G.cam.z + d);
   };
-  /** Zoom that fits every discovered world, centred on the star. */
+  /** Zoom level that shows every discovered world, centred on the star. */
   G.fitView = function (run, glide) {
     let ext = 60;
     if (run) for (const b of run.bodies) if (b.found) ext = Math.max(ext, b.r + b.size + 10);
     const mapH = G.mapBottom() - G.HUD_H - 8;
     let z = 1;
     for (const zz of C.camera.zooms) if (ext * 2 * zz <= G.W - 16 && ext * 2 * C.map.tilt * zz + 30 <= mapH) z = zz;
+    G.stopCam();
     G.cam.z = z;
-    const tx = C.map.cx - G.W / 2 / z, ty = C.map.cy - (G.HUD_H + mapH / 2 + 4) / z;
-    if (glide) { G.cam.gx = tx; G.cam.gy = ty; } else { G.cam.x = tx; G.cam.y = ty; G.cam.gx = null; }
+    G.cam.tc = { x: C.map.cx, y: C.map.cy + 6 };
+    if (!glide) G.snapCam();
   };
+  /** Glide to a world point, optionally changing zoom. */
   G.focusOn = function (x, y, z) {
-    if (z) G.cam.z = U.clamp(z, 1, 4);
-    G.cam.gx = x - G.W / 2 / G.cam.z;
-    G.cam.gy = y - (G.HUD_H + G.mapBottom()) / 2 / G.cam.z;
+    G.cam.anchor = null; G.cam.vx = 0; G.cam.vy = 0;
+    if (z) G.cam.z = U.clamp(Math.round(z), 1, 4);
+    G.cam.tc = { x, y };
+  };
+  /** Jump straight to the target view with no animation. */
+  G.snapCam = function () {
+    G.cam.zr = G.cam.z;
+    if (G.cam.tc) G.setCenter(G.cam.tc.x, G.cam.tc.y);
+    G.cam.tc = null; G.cam.anchor = null;
+    G.clampCam();
   };
   G.updateCam = function (dt) {
-    if (G.cam.gx === null || G.cam.gx === undefined) return;
-    const k = 1 - Math.exp(-dt * C.camera.glide);
-    G.cam.x += (G.cam.gx - G.cam.x) * k; G.cam.y += (G.cam.gy - G.cam.y) * k;
-    if (Math.abs(G.cam.gx - G.cam.x) < 0.3 && Math.abs(G.cam.gy - G.cam.y) < 0.3) { G.cam.x = G.cam.gx; G.cam.y = G.cam.gy; G.cam.gx = null; }
+    const cam = G.cam, c = G.camCenter();
+    if (cam.zr !== cam.z) {
+      cam.zr += (cam.z - cam.zr) * (1 - Math.exp(-dt * 13));
+      if (Math.abs(cam.z - cam.zr) < 0.004) cam.zr = cam.z;
+    }
+    if (cam.anchor) {
+      cam.x = cam.anchor.w.x - cam.anchor.sx / cam.zr; cam.y = cam.anchor.w.y - cam.anchor.sy / cam.zr;
+      if (cam.zr === cam.z) cam.anchor = null;
+    } else if (cam.tc) {
+      const k = 1 - Math.exp(-dt * C.camera.glide);
+      const nx = c.x + (cam.tc.x - c.x) * k, ny = c.y + (cam.tc.y - c.y) * k;
+      G.setCenter(nx, ny);
+      if (Math.abs(cam.tc.x - nx) < 0.2 && Math.abs(cam.tc.y - ny) < 0.2 && cam.zr === cam.z) { G.setCenter(cam.tc.x, cam.tc.y); cam.tc = null; }
+    } else G.setCenter(c.x, c.y);   // zooming via buttons/keys keeps the centre still
+    if (cam.vx || cam.vy) {         // momentum after a flick
+      cam.x += cam.vx * dt; cam.y += cam.vy * dt;
+      const d = Math.exp(-dt * 4.2);
+      cam.vx *= d; cam.vy *= d;
+      if (Math.hypot(cam.vx, cam.vy) * cam.zr < 4) { cam.vx = 0; cam.vy = 0; }
+    }
+    G.clampCam();
   };
 
   /* ---------- drawing primitives ---------- */

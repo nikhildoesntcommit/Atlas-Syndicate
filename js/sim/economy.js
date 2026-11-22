@@ -55,7 +55,7 @@
         if (!f.busy) {
           let full = false, starved = false;
           for (const g in R.out) if (b.stock[g] + R.out[g] > cap) full = true;
-          for (const g in R.in) if (b.stock[g] < R.in[g]) starved = true;
+          for (const g in R.in) if (b.stock[g] - ((b.hold && b.hold[g]) || 0) < R.in[g]) starved = true;   // goods held for other worlds or the gate are reserved
           if (full) { f.status = 'full'; continue; }
           if (starved) { f.status = 'starved'; continue; }
           for (const g in R.in) b.stock[g] -= R.in[g];
@@ -148,7 +148,18 @@
   };
 
   /* ---------- megaproject ---------- */
-  S.megaStage = run => C.mega.stages[run.mega.stage] || null;
+  const REQ = {};
+  /** Requirements of stage i, scaled for the current system (cached; config only, so deterministic). */
+  S.stageReq = function (run, i) {
+    const k = (run.sys || 0) + ':' + i;
+    if (REQ[k]) return REQ[k];
+    const tbl = C.mega.reqBySystem;
+    return (REQ[k] = Object.assign({}, tbl[Math.min(run.sys || 0, tbl.length - 1)][i]));
+  };
+  S.megaStage = function (run) {
+    const st = C.mega.stages[run.mega.stage];
+    return st ? { name: st.name, req: S.stageReq(run, run.mega.stage) } : null;
+  };
   S.megaRemaining = function (run, g) {
     const st = S.megaStage(run);
     if (!st || run.mega.state !== 'active' || !st.req[g]) return 0;
@@ -158,11 +169,12 @@
     const M = C.mega;
     if (run.mega.state === 'done') return 1;
     let tot = 0, got = 0;
-    M.stages.forEach((st, i) => {
-      for (const g in st.req) {
-        tot += st.req[g];
-        if (i < run.mega.stage) got += st.req[g];
-        else if (i === run.mega.stage) got += Math.min(st.req[g], run.mega.done[g]);
+    M.stages.forEach((_, i) => {
+      const req = S.stageReq(run, i);
+      for (const g in req) {
+        tot += req[g];
+        if (i < run.mega.stage) got += req[g];
+        else if (i === run.mega.stage) got += Math.min(req[g], run.mega.done[g]);
       }
     });
     return U.safeDiv(got, tot, 0);
@@ -215,6 +227,7 @@
     for (const g in st.req) if (run.mega.done[g] < st.req[g] - 1e-6) complete = false;
     if (!complete) return;
     run.mega.stageAt.push(Math.round(run.t));
+    run.stagesDone++;
     run.conf = Math.min(100, run.conf + C.mega.stageConf);
     run.credits += C.mega.stageGrant;
     S.logMoment(run, 'MEGAPROJECT STAGE ' + (run.mega.stage + 1) + ' (' + st.name + ') COMPLETE', 'mega');
@@ -222,11 +235,18 @@
     for (const g of AS.GOOD_KEYS) { run.mega.done[g] = 0; site.stock[g] = 0; }
     if (run.mega.stage >= C.mega.stages.length) {
       run.mega.state = 'done';
-      run.mega.completedAt = run.t;
-      run.won = true; run.over = true; run.overReason = 'MEGAPROJECT COMPLETE';
-      run.banner = { text: C.mega.name + ' COMPLETE', col: 14, kind: 'mega', t: 8 };
-      run.fx.push({ type: 'megaDone', id: site.id });
-      S.logMoment(run, C.mega.name + ' COMPLETE', 'mega');
+      run.sysDone++;
+      run.fx.push({ type: 'megaDone', id: site.id, final: S.lastSystem(run) });
+      if (S.lastSystem(run)) {
+        run.mega.completedAt = run.t;
+        run.won = true; run.over = true; run.overReason = 'ALL THREE GATES OPEN';
+        run.banner = { text: 'FINAL ' + C.mega.name + ' COMPLETE', col: 14, kind: 'mega', t: 8 };
+        S.logMoment(run, 'FINAL ' + C.mega.name + ' COMPLETE', 'mega');
+      } else {
+        run.warpAt = run.t + C.campaign.warpDelay;
+        run.banner = { text: C.mega.name + ' OPEN - WARPING TO ' + C.campaign.systems[run.sys + 1].name, col: 14, kind: 'mega', t: 6 };
+        S.logMoment(run, C.mega.name + ' OPEN IN ' + S.sysCfg(run).name, 'mega');
+      }
     } else {
       run.banner = { text: 'STAGE ' + run.mega.stage + ' DONE - NEXT: ' + S.megaStage(run).name + '  +' + C.mega.stageConf + ' CONFIDENCE', col: 13, kind: 'mega', t: 5 };
       run.fx.push({ type: 'megaStage', id: site.id, stage: run.mega.stage });

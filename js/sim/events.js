@@ -22,7 +22,8 @@
       const gap = Math.max(E.intervalMin, E.intervalMax - E.intervalDecPerMin * Math.max(0, m - E.startAt / 60));
       run.nextEvent = run.t + gap * (0.8 + run.rng() * 0.4);
     }
-    if (run.mega.state === 'locked' && run.t >= C.mega.unlockAt && S.colonies(run).length >= C.mega.minWorlds) S.unlockMega(run);
+    const SC = S.sysCfg(run);
+    if (run.mega.state === 'locked' && run.t - run.sysStart >= SC.unlock && S.colonies(run).length >= SC.minWorlds) S.unlockMega(run);
     if (run.t >= run.nextQuarter) S.quarterlyReview(run);
   };
 
@@ -139,10 +140,13 @@
       text = 'PRICE SWING: ' + AS.GOODS[g].name + ' X' + mk.swing.toFixed(1) + ' FOR ' + E.swing.dur + 'S';
       col = mk.swing >= 1 ? 22 : 18; k = mk.swing >= 1 ? 'good' : 'bad';
     }
-    if (AS.HARMFUL[kind] && run.perks.insure) S.earn(run, 150 * run.perks.insure * Math.max(1, run.quarter));
+    if (AS.HARMFUL[kind] && run.perks.insure) S.insurePay(run);
     run.banner = { text, col, kind: k, t: 4.5 };
     run.fx.push({ type: 'event', kind });
   };
+
+  /** Insurance pays into credits, but does not count as revenue towards the Board's targets. */
+  S.insurePay = function (run) { run.credits += 150 * run.perks.insure * Math.max(1, Math.min(run.quarter, 8)); };
 
   S.resolvePending = function (run, p) {
     const E = C.events;
@@ -151,7 +155,7 @@
       run.banner = { text: 'SOLAR FLARE: ALL FREIGHTERS STOPPED ' + run.flareT + 'S', col: 18, kind: 'bad', t: 4.5 };
       run.fx.push({ type: 'flare' });
       S.logMoment(run, 'SOLAR FLARE STOPPED ALL FREIGHT', 'bad');
-      if (run.perks.insure) S.earn(run, 150 * run.perks.insure * Math.max(1, run.quarter));
+      if (run.perks.insure) S.insurePay(run);
     } else if (p.kind === 'meteor') {
       const b = S.getBody(run, p.id);
       if (!b || !b.claimed) return;
@@ -164,14 +168,14 @@
       run.banner = { text: 'METEOR STRIKE ON ' + b.name + ': ' + hit.length + ' FACILITY STOPPED, STOCK -30%', col: 18, kind: 'bad', t: 4.5 };
       run.fx.push({ type: 'meteor', id: b.id });
       S.logMoment(run, 'METEOR STRIKE ON ' + b.name, 'bad');
-      if (run.perks.insure) S.earn(run, 150 * run.perks.insure * Math.max(1, run.quarter));
+      if (run.perks.insure) S.insurePay(run);
     }
   };
 
   S.perkOffers = function (run) {
     const keys = AS.PERK_KEYS.filter(k => {
       if (k === 'hulls' && run.mods.hulls) return false;
-      if (k === 'gatefund' && run.quarter < 5) return false;
+      if (k === 'gatefund' && run.sys === 0 && run.sq < 1) return false;
       if (k === 'survey' && !run.bodies.some(b => !b.found && !b.site)) return false;
       if ((k === 'overtime' || k === 'momentum' || k === 'insure' || k === 'integrate') && run.perks[k] >= 2) return false;
       return true;
@@ -187,8 +191,9 @@
     const delta = met ? B.hitBonus : -Math.min(B.missMax, Math.round(B.missScale * (1 - U.safeDiv(revenue, target, 0))));
     run.conf = U.clamp(run.conf + delta, 0, 100);
     run.quarter++;
+    run.sq++;
     if (met) { run.streak++; run.bestStreak = Math.max(run.bestStreak, run.streak); } else run.streak = 0;
-    const growth = run.quarter < B.lateFrom ? B.targetGrowth : B.targetGrowthLate;
+    const growth = run.sq < 4 ? B.targetGrowth : B.targetGrowthLate;
     run.lastReview = { quarter: run.quarter, revenue, target, met, delta, conf: Math.round(run.conf), next: Math.round(run.target * growth) };
     run.target *= growth;
     run.qIncome = 0;

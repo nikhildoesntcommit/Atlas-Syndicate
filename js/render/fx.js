@@ -89,6 +89,15 @@
         case 'boom': snd('good'); if (b) W.burst(run, b.sx, b.sy, 16, [13, 12, 22], 18, 6); break;
         case 'event': break;
         case 'perk': snd('perk'); break;
+        case 'boost': snd('boost'); if (live) { FX.shake(0.25); G.boostFx = 0.6; } break;
+        case 'deflect':
+          if (b) { W.burst(run, b.sx, b.sy - b.size - 14, 40, [31, 14, 13, 12, 4], 40, 2, 1); W.ring(run, b.sx, b.sy - b.size - 14, 2, 24, 0.7, 14); }
+          snd('deflect'); if (live) FX.shake(0.4); break;
+        case 'warp':
+          G.warpFx = { t: 0, run }; G.finale = null; G.sel = null; G.popup = null; G.link = null;
+          AS.Spr.planets = {};
+          if (live) { AS.Sfx.play('warp'); FX.shake(1.2); }
+          G.fitView(run); break;
         case 'megaUnlock':
           if (b) { W.ring(run, b.sx, b.sy, 4, 50, 1.6, 13); W.ring(run, b.sx, b.sy, 4, 34, 1.2, 14); }
           if (live) { FX.shake(0.8); AS.Sfx.play('megaUnlock'); if (AS.Music) AS.Music.sting(); }
@@ -123,6 +132,6 @@
       }
     }
     if (f.t - dt < 2.6 && f.t >= 2.6) G.flash = 1;
-    if (live && f.t > 0.3 && f.t < 5) G.cam.gx = b.sx - G.W / 2 / G.cam.z, G.cam.gy = b.sy - (G.HUD_H + G.mapBottom()) / 2 / G.cam.z;
+    if (live && f.t > 0.3 && f.t < 5) G.focusOn(b.sx, b.sy);
   };
 })(globalThis.AS = globalThis.AS || {});

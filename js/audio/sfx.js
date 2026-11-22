@@ -122,6 +122,9 @@
           break;
         case 'start': A.thud(55, 0.8, 0.4); A.metal(262, 1.0, 0.06, 0.1); A.metal(392, 1.0, 0.05, 0.25); break;
         case 'type': A.hiss(0.02, 0.12, 5000, 2000, 'bandpass', 0, 3); break;
+        case 'boost': A.tone(110, 0.7, 'sawtooth', 0.05, 440); A.hiss(0.6, 0.15, 400, 5000, 'bandpass', 0, 2); A.metal(880, 0.4, 0.04, 0.35); break;
+        case 'deflect': A.tone(1400, 0.12, 'square', 0.05, 300); A.thud(70, 0.4, 0.35, 0.08); A.hiss(0.6, 0.3, 3000, 100, 'lowpass', 0.08); A.metal(1175, 0.5, 0.05, 0.1); break;
+        case 'warp': A.thud(30, 2.0, 0.6); A.hiss(2.2, 0.3, 150, 9000, 'bandpass', 0, 1); [196, 262, 392, 523, 784].forEach((f, i) => A.tone(f, 1.0, 'sawtooth', 0.025, f * 2, 0.15 + i * 0.12)); A.metal(1568, 1.4, 0.05, 1.0); break;
       }
     } catch (e) { /* audio must never break the game */ }
   };

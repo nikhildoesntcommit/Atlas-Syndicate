@@ -43,9 +43,15 @@
     return b;
   }
 
+  /** Seed of the current system: the run seed for system 1, then derived from it. */
+  S.sysSeed = run => (run.sys ? (Math.imul((run.seed ^ Math.imul(run.sys, 0x9e3779b9)) >>> 0, 2654435761) >>> 0) || 1 : run.seed);
+  S.sysCfg = run => C.campaign.systems[Math.min(run.sys || 0, C.campaign.systems.length - 1)];
+  S.lastSystem = run => (run.sys || 0) >= C.campaign.systems.length - 1;
+
   S.generateSystem = function (run) {
     const M = C.map;
-    const rng = U.rng((run.seed ^ 0x5bd1e995) >>> 0);
+    const seed = S.sysSeed(run), SC = S.sysCfg(run);
+    const rng = U.rng((seed ^ 0x5bd1e995) >>> 0);
     const R = (a, b) => a + rng() * (b - a);
     const nOther = 10 + (rng() < 0.5 ? 1 : 0);
     const types = ['ice', 'rust', 'gas', 'ice2'];
@@ -96,7 +102,7 @@
       return n;
     };
     const w0 = TAU / M.primePeriod;
-    const waves = C.discovery.waves;
+    const waves = SC.waves;
     let unknownN = 0;
     for (let i = 0; i < N; i++) {
       const isPrime = i === primeIdx, kind = slots[i], T = AS.TYPE_DEFS[kind];
@@ -106,12 +112,12 @@
       if (!known) {
         // waves of 1-2 worlds, in order of distance from the star
         const wi = Math.min(waves.length - 1, Math.floor(unknownN * waves.length / Math.max(1, N - knownIdx.length)));
-        discoverAt = waves[wi] + (unknownN % 2) * 25;
+        discoverAt = run.sysStart + waves[wi] + (unknownN % 2) * 20;
         unknownN++;
       }
       const b = newBody(run, {
-        key: 'w' + run.seed + '_' + i, kind, r, prime: isPrime,
-        name: isPrime ? 'ATLAS PRIME' : nameFor(kind),
+        key: 'w' + seed + '_' + run.sys + '_' + i, kind, r, prime: isPrime,
+        name: isPrime ? C.campaign.capitalNames[run.sys] || 'ATLAS PRIME' : nameFor(kind),
         size: isPrime ? 7 : Math.round(R(T.size[0], T.size[1])),
         slotsN: isPrime ? 6 : Math.round(R(T.slots[0], T.slots[1])),
         dep: isPrime ? { ore: 0.7, ice: 1.1 } : T.dep(R),
@@ -137,7 +143,7 @@
     // megaproject site: a structure on Atlas Prime's orbit, 60 degrees ahead (hidden until unlocked)
     const P = S.prime(run);
     newBody(run, {
-      key: 'site' + run.seed, kind: 'gate', r: P.r, site: true, name: C.mega.name, size: 9, slotsN: 0,
+      key: 'site' + seed + '_' + run.sys, kind: 'gate', r: P.r, site: true, name: C.mega.name, size: 9, slotsN: 0,
       phase: P.phase + TAU / 6, omega: P.omega, blurb: 'MEGAPROJECT SITE', found: false, claimed: false,
     });
   };
@@ -148,6 +154,7 @@
     const rngState = { a: seed };
     const run = {
       v: 4, seed, charter: ch, sysName: S.systemName(seed), rngState, rng: U.rngFrom(rngState), t: 0, steps: 0,
+      sys: 0, sysStart: 0, sq: 0, sysDone: 0, stagesDone: 0, warpAt: 0, boostT: 0, boostCd: 0, deflected: 0,
       credits: C.economy.startCredits, conf: C.board.start,
       bodies: [], bodyMap: new Map(), routes: [], routeMap: new Map(), freighters: [], nextId: 1, primeRef: null,
       market: {}, contracts: [], nextContract: C.contracts.first, contractsDone: 0, contractsFailed: 0,
@@ -184,18 +191,49 @@
       run.mega.done[g] = 0;
     }
     run.nextEvent = C.events.startAt + run.rng() * C.events.firstJitter;
+    S.setupSystem(run);
+    for (let i = 0; i < C.fleet.start + (ch === 'hazard' ? 2 : 0); i++) S.addFreighter(run);
+    S.computeLogistics(run);
+    S.record(run);
+    run.fx.length = 0;
+    return run;
+  };
+
+  /** Generate the current system and give its capital the starting facilities. */
+  S.setupSystem = function (run) {
     S.generateSystem(run);
     S.updatePositions(run);
     const P = S.prime(run);
     const st = C.colony.primeStart;
     P.claimed = true; P.pop = st.pop;
     for (const g of Object.keys(st.stock)) P.stock[g] = st.stock[g];
+    if (run.sys) {   // later systems: the capital arrives with a stockpile, so the next gate is reachable sooner
+      P.stock.food += 60 * run.sys; P.stock.ore += 40 * run.sys; P.stock.ice += 30 * run.sys; P.stock.alloy += 15 * run.sys; P.stock.gas += 20 * run.sys;
+      const cap = S.storageCap(run, P);
+      for (const g of AS.GOOD_KEYS) P.stock[g] = Math.min(cap, P.stock[g]);
+    }
     ['mine', 'drill', 'agri', 'smelter', 'habitat'].forEach((t, i) => { P.fac[i] = S.newFacility(t, 0); });
-    for (let i = 0; i < C.fleet.start + (ch === 'hazard' ? 2 : 0); i++) S.addFreighter(run);
+    if (run.sys >= 2) P.fac[5] = S.newFacility('fab', 0);   // the final system's capital comes with a Fabricator for the parts its gate needs
+  };
+  /** Warp: leave the finished system for the next one. Credits, confidence, perks and freighters come along. */
+  S.enterSystem = function (run) {
+    run.sys++;
+    run.sysStart = run.t;
+    run.sysName = S.systemName(S.sysSeed(run));
+    run.bodies = []; run.bodyMap = new Map(); run.routes = []; run.routeMap = new Map(); run.primeRef = null;
+    for (const f of run.freighters) { f.route = null; f.state = 'idle'; f.cargo = {}; f.load = 0; f.prog = 0; f.timer = 0; f.wait = 0; f.parked = false; }
+    run.contracts = []; run.pending = []; run.flareT = 0; run.fuelT = 0; run.warpAt = 0;
+    for (const g of AS.GOOD_KEYS) { const m = run.market[g]; m.sat = 0; m.swing = 1; m.swingT = 0; m.spike = 1; m.spikeT = 0; run.mega.done[g] = 0; }
+    run.mega.state = 'locked'; run.mega.stage = 0; run.mega.unlockedAt = 0;
+    run.conf = Math.min(100, run.conf + C.campaign.warpConf);
+    run.target = Math.round(C.board.firstTarget * run.mods.targetMult * S.sysCfg(run).target);
+    run.qIncome = 0; run.sq = 0; run.nextQuarter = run.t + C.board.quarterSeconds;
+    run.nextEvent = run.t + 90; run.nextContract = run.t + 60;
+    S.setupSystem(run);
     S.computeLogistics(run);
-    S.record(run);
-    run.fx.length = 0;
-    return run;
+    run.banner = { text: 'WELCOME TO ' + S.sysCfg(run).name + ' - ' + run.sysName, col: 13, kind: 'mega', t: 6 };
+    run.fx.push({ type: 'warp', sys: run.sys });
+    S.logMoment(run, 'WARPED TO ' + S.sysCfg(run).name, 'mega');
   };
 
   S.newFacility = (type, buildTime) => ({ type, prog: 0, busy: false, status: buildTime > 0 ? 'build' : 'ok', broken: 0, build: buildTime || 0, buildT: buildTime || 0 });

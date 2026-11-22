@@ -46,7 +46,7 @@
         // 4. a full skilled run: invariants every 2 s, reaches the megaproject
         const a = AS.Bot.simulate(C.selftest.seed, 'standard', 'skilled', C.selftest.minutes * 60, { check: true, log: true });
         ok(!a.fails.length, 'skilled bot run ' + U.fmtTime(a.t) + ', no invariant failures' + (a.fails.length ? ': ' + a.fails.join('; ') : ''));
-        ok(a.megaReached, 'megaproject reached at ' + U.fmtTime(a.megaAt) + (a.megaDone ? ', completed at ' + U.fmtTime(a.doneAt) : ', stage ' + a.stage));
+        ok(a.sysDone >= 1, 'campaign: ' + a.sysDone + ' of 3 gates opened' + (a.won ? ', won at ' + U.fmtTime(a.doneAt) : ', reached system ' + (a.sys + 1)));
         ok(a.run.totalIncome > 0 && a.run.routesBuilt > 0, 'revenue ' + U.fmtNum(a.run.totalIncome) + ', routes ' + a.run.routesBuilt + ', score ' + a.score);
         // 5. same seed + same actions = same state
         const b = AS.Bot.simulate(C.selftest.seed, 'standard', 'skilled', C.selftest.minutes * 60, {});

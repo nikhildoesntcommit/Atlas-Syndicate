@@ -1,6 +1,6 @@
 /* ATLAS SYNDICATE v4 — ui/onboarding.js
-   First-run guided opening: claim a world, build an extractor, connect a route, watch the first
-   freighter deliver. Each step spotlights exactly what to click and advances when the player does it.
+   First-run guided opening: claim a world (it links to the capital by itself), build an extractor,
+   watch the first freighter deliver. Each step spotlights exactly what to click and advances when the player does it.
    The simulation is paused during steps 1-3. Skippable at any time (SKIP button or Esc). */
 (function (AS) {
   'use strict';
@@ -30,9 +30,9 @@
   function target() { return O.st && S.getBody(O.st.run, O.st.target); }
   function advance() {
     O.st.step++; O.st.stepT = 0;
+    if (O.st.step === 2) O.st.step = 3;   // routes are automatic now: straight from building to watching
     AS.Sfx.play('good');
     const T = target(), P = S.prime(O.st.run);
-    if (O.st.step === 2 && T) G.focusOn((P.sx + T.sx) / 2, (P.sy + T.sy) / 2, 2);
     if (O.st.step === 4) { O.st.doneT = 7; AS.Store.set('onboarded', true); }
   }
   /** Player actions report here. */
@@ -88,7 +88,7 @@
     for (let i = 0; i < 4; i++) { ctx.fillStyle = PAL[13]; ctx.fillRect(ax - i, up ? ay - i : ay + i, i * 2 + 1, 1); }
   }
   function bodyRect(b) {
-    const s = G.toScreen(b.sx, b.sy), r = (b.size + 5) * G.cam.z;
+    const s = G.toScreen(b.sx, b.sy), r = (b.size + 5) * G.cam.zr;
     return { x: Math.round(s.x - r), y: Math.round(s.y - r), w: Math.round(r * 2), h: Math.round(r * 2) };
   }
 
@@ -102,7 +102,7 @@
     const ext = T.dep.ice >= 0.9 ? 'drill' : T.dep.ore > 0 ? 'mine' : T.dep.gas > 0 ? 'skimmer' : 'drill';
     if (st.step === 0) {
       if (!selT) { holes = [bodyRect(T)]; text = 'CLICK ' + T.name + '. ' + (T.dep.ice >= 0.9 ? 'IT HAS ICE, WHICH BECOMES FOOD.' : 'IT HAS ORE TO SELL.'); }
-      else if (H.claimBtn) { holes = [H.claimBtn]; text = 'NOW PRESS CLAIM. IT BECOMES YOUR WORLD.'; }
+      else if (H.claimBtn) { holes = [H.claimBtn]; text = 'NOW PRESS CLAIM. IT BECOMES YOURS AND LINKS TO ATLAS PRIME BY ITSELF.'; }
     } else if (st.step === 1) {
       const slot = T.fac.indexOf(null);
       if (!selT) { holes = [bodyRect(T)]; text = 'CLICK ' + T.name + ' TO SEE ITS BUILD SLOTS.'; }
@@ -118,9 +118,9 @@
       holes = [bodyRect(P), bodyRect(T)];
       text = 'DRAG FROM ATLAS PRIME TO ' + T.name + ' TO OPEN A FREIGHT ROUTE.';
     } else if (st.step === 3) {
-      text = 'FREIGHTERS CARRY GOODS BY THEMSELVES. WHATEVER REACHES ATLAS PRIME IS SOLD.';
+      text = 'A FREIGHTER IS ALREADY FLYING THE NEW ROUTE. WHATEVER REACHES ATLAS PRIME IS SOLD.';
     } else if (st.step === 4) {
-      text = 'DONE. NOW GROW: HIT EACH QUARTER\'S REVENUE TARGET (TOP BAR) TO KEEP THE BOARD HAPPY.';
+      text = 'DONE. CLAIM MORE WORLDS, HIT EACH QUARTER\'S TARGET, AND BUILD THE JUMP GATE TO REACH THE NEXT SYSTEM.';
     }
     if (holes.length && st.step < 3) {
       dimExcept(ctx, holes);
@@ -141,8 +141,8 @@
     const x = Math.round(G.W / 2 - w / 2), y = G.HUD_H + 4;
     D.plate(ctx, x, y, w, h, 2);
     D.hazard(ctx, x + 1, y + 1, w - 2, 2, 13, G.time * 8);
-    const stepN = Math.min(st.step + 1, 4);
-    D.text(ctx, st.step < 4 ? 'STEP ' + stepN + '/4  ' + TITLES[st.step] : 'YOU ARE SET', x + 6, y + 6, 13, { big: false });
+    const stepN = st.step === 3 ? 3 : st.step + 1;
+    D.text(ctx, st.step < 4 ? 'STEP ' + stepN + '/3  ' + TITLES[st.step] : 'YOU ARE SET', x + 6, y + 6, 13, { big: false });
     lines.forEach((l, i) => D.text(ctx, l, x + 6, y + 15 + i * 7, 31, { shadow: false }));
     if (st.step < 4) G.button(ctx, x + w - 34, y + 4, 30, 10, 'SKIP', () => O.skip(), { tip: 'SKIP THE GUIDE (ESC). TIPS AND THE ADVISOR STAY ON.' });
     else G.button(ctx, x + w - 26, y + 4, 22, 10, 'OK', () => { st.step = 5; AS.Sfx.play('click'); });

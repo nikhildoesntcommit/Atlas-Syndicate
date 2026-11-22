@@ -14,8 +14,8 @@
   B.create = function (seed, skill) {
     skill = skill || 'skilled';
     const P = {
-      skilled: { every: 2, claimEvery: 140, reserve: 200, fleetPerRoute: 2, contracts: true, rebalance: true, mega: true },
-      casual: { every: 6, claimEvery: 230, reserve: 350, fleetPerRoute: 1.2, contracts: false, rebalance: false, mega: false },
+      skilled: { every: 2, claimEvery: 100, reserve: 200, fleetPerRoute: 2, contracts: true, rebalance: true, mega: true },
+      casual: { every: 6, claimEvery: 170, reserve: 350, fleetPerRoute: 1.2, contracts: false, rebalance: false, mega: false },
       idle: { every: 1e9 },
     }[skill];
     return { rng: U.rng(((seed >>> 0) ^ 0x9e3779b9) >>> 0), next: 1, skill, p: P };
@@ -52,8 +52,9 @@
     let s = (!hasIce && b.dep.ice >= 1 ? 300 : 0) + (hasIce && !hasGas && b.dep.gas >= 1 ? 220 : 0);
     s += ((b.dep.ore || 0) + (b.dep.ice || 0) + (b.dep.gas || 0)) * 40 + b.slotsN * 12;
     // diversify: favour whatever the network is short of (and what the megaproject stage needs)
-    if (S.productionRate(run, 'ore') < 2 + run.t / 600 && b.dep.ore >= 0.9) s += 160;
-    if (run.t > 300 && S.productionRate(run, 'gas') < 1 && b.dep.gas >= 1) s += 140;
+    const ore = S.productionRate(run, 'ore');
+    if (ore < 2 + (run.t - run.sysStart) / 600 && b.dep.ore >= 0.9) s += ore < 1 && cols.length >= 2 ? 360 : 160;
+    if ((run.t > 300 || run.sys > 0) && S.productionRate(run, 'gas') < 1 && b.dep.gas >= 1) s += run.sys > 0 && cols.length >= 2 ? 300 : 140;
     if (run.mega.state === 'active') for (const g of ['ore', 'ice', 'gas']) if (S.megaRemaining(run, g) > 0 && b.dep[g] >= 0.9) s += 120;
     if (S.has(b, 'rich')) s += 40;
     if (S.has(b, 'radiation')) s -= 15;
@@ -82,7 +83,7 @@
 
     // 1. claim new worlds at a steady pace; without a food surplus only worlds that can feed themselves
     const food = foodBalance(run);
-    if (cols.length < 1 + Math.floor(run.t / p.claimEvery) && run.credits > 0) {
+    if (cols.length < 1 + Math.floor((run.t - run.sysStart + 40) / p.claimEvery) && run.credits > 0) {
       let free = run.bodies.filter(b => b.found && !b.claimed && !b.site && run.t - b.lostAt > 120);
       if (food < 0.35 && bot.skill === 'skilled' && free.some(b => b.dep.ice >= 0.9)) free = free.filter(b => b.dep.ice >= 0.9);
       const nxt = free.sort((a, c) => score(run, bot, c, P) - score(run, bot, a, P))[0];
@@ -143,7 +144,12 @@
         }
       }
     }
-    // 6. contracts the economy can plausibly cover
+    // 6. abilities: deflect meteors it can afford, boost when the gate or a quarter-end needs it
+    if (p.mega) {
+      for (const pd of run.pending) if (pd.kind === 'meteor' && run.credits > S.deflectCost(run) + reserve) S.act(run, 'deflect', { id: pd.id });
+      if (run.boostCd <= 0 && (megaOn || (run.nextQuarter - run.t < 40 && run.qIncome < run.target))) S.act(run, 'boost');
+    }
+    // 7. contracts the economy can plausibly cover
     if (p.contracts) for (const c of run.contracts) {
       if (!c.accepted && S.productionRate(run, c.good) * C.contracts.deadline * 0.7 >= c.qty && (c.good !== 'food' || P.stock.food > c.qty + 60) && !P.starving) S.act(run, 'accept', { id: c.id });
     }
@@ -175,7 +181,7 @@
     return {
       run, fails, steps, seed, charter, skill, t: run.t, over: run.over, won: run.won, reason: run.overReason,
       megaReached: run.mega.state !== 'locked', megaAt: run.mega.unlockedAt, megaDone: run.mega.state === 'done', doneAt: run.mega.completedAt,
-      stage: run.mega.stage, score: sc.total, quarters: run.quarter, colonies: S.colonies(run).length, conf: run.conf, minConf: run.minConf,
+      stage: run.mega.stage, sys: run.sys, sysDone: run.sysDone, score: sc.total, quarters: run.quarter, colonies: S.colonies(run).length, conf: run.conf, minConf: run.minConf,
     };
   };
 })(globalThis.AS = globalThis.AS || {});

@@ -185,7 +185,7 @@
       if (me) D.rect(ctx, p.x + 10, y - 2, p.w - 20, 10, 3);
       const c = me ? 13 : 7;
       TS(ctx, i + 1, p.x + 14, y, c); TS(ctx, e.name, p.x + 32, y, c); TS(ctx, U.fmtInt(e.score), p.x + 112, y, c);
-      TS(ctx, U.fmtTime(e.time), p.x + 164, y, c); TS(ctx, e.won ? 'GATE OPEN' : 'Q' + (e.q || 0), p.x + 196, y, e.won ? 22 : 6);
+      TS(ctx, U.fmtTime(e.time), p.x + 164, y, c); TS(ctx, e.won ? 'ALL GATES' : 'SYSTEM ' + (e.sr || 1), p.x + 196, y, e.won ? 22 : 6);
       TS(ctx, (e.charter || '').toUpperCase().slice(0, 18) + (e.daily ? ' D' : ''), p.x + 256, y, 6);
     });
     backBtn(ctx, p);
@@ -195,19 +195,19 @@
   function drawHelp(ctx) {
     const p = panel(ctx, 460, 250, 'HOW TO PLAY');
     const L = [
-      ['GOAL', 'CLAIM WORLDS, BUILD, LINK THEM TO ATLAS PRIME. GOODS THAT REACH PRIME ARE SOLD.'],
+      ['GOAL', 'CLAIM WORLDS AND BUILD. NEW WORLDS LINK TO ATLAS PRIME, WHICH SELLS EVERYTHING.'],
       ['', 'EVERY 3 MINUTES THE BOARD CHECKS REVENUE. KEEP BOARD CONFIDENCE ABOVE ZERO.'],
-      ['', 'AROUND 18:00 THE JUMP GATE MEGAPROJECT UNLOCKS. FINISH ITS 3 STAGES TO WIN.'],
+      ['', 'EACH SYSTEM HAS A JUMP GATE: BUILD IT TO WARP ON. OPEN ALL 3 GATES TO WIN.'],
       ['CHAIN', 'MINE > ORE   DRILL > ICE   SKIMMER > GAS   AGRI DOME: ICE > FOOD'],
       ['', 'SMELTER: 2 ORE > ALLOY   FABRICATOR: ALLOY + GAS > PARTS (BEST PRICE)'],
       ['RULES', 'BOARD CONFIDENCE IS YOUR LIFE BAR: STARVING WORLDS, DEBT, MISSED TARGETS DRAIN IT.'],
       ['', 'COLONISTS PAY TAX AND EAT FOOD. NO FOOD = WORLD LOST; IT CAN BE CLAIMED AGAIN AFTER 60 S.'],
-      ['MOUSE', 'CLICK A WORLD TO CLAIM OR MANAGE IT. CLICK A SLOT TO BUILD.'],
-      ['', 'DRAG WORLD TO WORLD = ROUTE. CLICK A ROUTE, + / - FREIGHTERS. RIGHT-CLICK CLOSES IT.'],
-      ['', 'DRAG EMPTY SPACE TO PAN, WHEEL TO ZOOM.'],
-      ['TOUCH', 'TAP = CLICK. DRAG FROM A WORLD = ROUTE. DRAG SPACE = PAN. PINCH = ZOOM.'],
-      ['KEYS', 'WASD/ARROWS PAN  Q/E ZOOM  R FIT  SPACE PAUSE  1 2 3 SPEED  F BUY FREIGHTER'],
-      ['', '+/- FREIGHTERS ON ROUTE  T TIPS  M MUTE  ESC MENU'],
+      ['MOUSE', 'CLICK A WORLD TO CLAIM OR MANAGE IT. CLICK A SLOT TO BUILD (BEST IS MARKED).'],
+      ['', 'DRAG ANYWHERE TO PAN, WHEEL TO ZOOM, DOUBLE-CLICK TO ZOOM IN.'],
+      ['', 'BOOST: FREIGHTERS AT DOUBLE SPEED. DEFLECT: SHOOT DOWN A METEOR WARNING.'],
+      ['TOUCH', 'TAP = CLICK. DRAG = PAN. PINCH = ZOOM. DOUBLE-TAP = ZOOM IN.'],
+      ['KEYS', 'WASD/ARROWS PAN  Q/E ZOOM  R FIT  SPACE PAUSE  1 2 3 SPEED  B BOOST'],
+      ['', 'F BUY FREIGHTER  +/- FREIGHTERS ON A ROUTE  T TIPS  M MUTE  ESC MENU'],
     ];
     L.forEach(([h, t], i) => { const y = p.y + 26 + i * 14; if (h) T(ctx, h, p.x + 12, y, 12); TS(ctx, t, p.x + 54, y, 7); });
     const gy = p.y + 26 + L.length * 14 + 2;
@@ -324,13 +324,13 @@
     if (!run) { Sc.close(); return; }
     const sc = S.computeScore(run);
     const won = run.won;
-    const p = panel(ctx, 470, 258, won ? C.mega.name + ' COMPLETE' : 'RUN OVER', (won ? 'MEGAPROJECT FINISHED AT ' + U.fmtTime(run.mega.completedAt) : run.overReason + ' AT ' + U.fmtTime(run.t)) + '  -  ' + run.sysName + '  -  ' + AS.CHARTERS[run.charter].name.toUpperCase());
+    const p = panel(ctx, 470, 258, won ? 'ALL GATES OPEN' : 'RUN OVER', (won ? 'ALL 3 SYSTEMS CLEARED AT ' + U.fmtTime(run.mega.completedAt) : run.overReason + ' IN SYSTEM ' + (run.sys + 1) + ' AT ' + U.fmtTime(run.t)) + '  -  ' + AS.CHARTERS[run.charter].name.toUpperCase());
     // left: score
     const lx = p.x + 12;
     let y = p.y + 30;
     const k = U.clamp(G.screenT / 1.5, 0, 1);
-    const rows = [['REVENUE', sc.revenue], ['TIME ' + U.fmtTime(run.t), sc.tenure], ['CONTRACTS ' + run.contractsDone, sc.contracts], ['PEAK COLONISTS ' + Math.round(run.peakPop), sc.pop], ['GATE STAGES ' + run.mega.stage + '/3', sc.stages]];
-    if (sc.mega) rows.push(['GATE BONUS', sc.mega]);
+    const rows = [['REVENUE', sc.revenue], ['TIME ' + U.fmtTime(run.t), sc.tenure], ['CONTRACTS ' + run.contractsDone, sc.contracts], ['PEAK COLONISTS ' + Math.round(run.peakPop), sc.pop], ['GATE STAGES ' + (run.stagesDone || 0) + '/9', sc.stages], ['SYSTEMS CLEARED ' + (run.sysDone || 0) + '/3', sc.systems]];
+    if (sc.mega) rows.push(['VICTORY BONUS', sc.mega]);
     rows.forEach(([l, v]) => { TS(ctx, l, lx, y, 6); TS(ctx, '+' + U.fmtInt(Math.round(v * U.easeOut(k))), lx + 150, y, 7, 'right'); y += 8; });
     TS(ctx, 'CHARTER MULTIPLIER', lx, y, 6); TS(ctx, 'X' + sc.mult.toFixed(2), lx + 150, y, 7, 'right'); y += 9;
     D.rect(ctx, lx, y - 2, 150, 1, 4);

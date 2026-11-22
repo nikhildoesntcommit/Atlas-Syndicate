@@ -25,7 +25,7 @@
     G.mode = 'play'; G.attract = null;
     Sc.close();
     resetClient(run);
-    G.cam.z = 2; G.focusOn(C.map.cx, C.map.cy, 2); G.cam.x = G.cam.gx; G.cam.y = G.cam.gy; G.cam.gx = null;
+    G.focusOn(C.map.cx, C.map.cy, 2); G.snapCam(); G.link = null;
     if (opts.tutorial) AS.Onboard.start(run); else AS.Onboard.st = null;
     AS.Sfx.play('start');
     Act.autosave();
@@ -59,7 +59,7 @@
       const sc = S.computeScore(run);
       const id = Date.now().toString(36) + '-' + run.seed;
       G.lastEntryId = id;
-      rank = Act.addToBoard({ name: G.name, score: sc.total, time: Math.floor(run.t), seed: run.seed, charter: AS.CHARTERS[run.charter].name, sys: run.sysName, daily: run.daily, won: run.won, q: run.quarter, id });
+      rank = Act.addToBoard({ name: G.name, score: sc.total, time: Math.floor(run.t), seed: run.seed, charter: AS.CHARTERS[run.charter].name, sys: run.sysName, daily: run.daily, won: run.won, q: run.quarter, sr: run.sys + 1, id });
       Act.clearSave();
     }
     Sc.replace('report', { run, rank, beat: G.beat });
@@ -131,6 +131,7 @@
     A.shotT -= dt;
     let cut = null;
     for (const e of run.fx) {
+      if (e.type === 'warp') { A.focus = null; A.follow = null; A.z = 0; A.shotT = 5; A.pri = 3; cut = null; continue; }
       const b = e.id ? S.getBody(run, e.id) : null;
       if (!b) continue;
       if (e.type === 'megaUnlock' || e.type === 'megaStage' || e.type === 'megaDone') cut = { b, z: 2, hold: 9, pri: 3 };
@@ -185,6 +186,8 @@
   /* ---------- the loop ---------- */
   function update(dt) {
     G.time += dt;
+    if (G.warpFx) { G.warpFx.t += dt; if (G.warpFx.t > 3.8) G.warpFx = null; }
+    if (G.boostFx > 0) G.boostFx = Math.max(0, G.boostFx - dt);
     AS.FX.update(dt);
     AS.Input.update(dt);
     G.updateCam(dt);
@@ -201,7 +204,7 @@
       if (G.adviceT <= 0) { G.advice = AS.Tips.advice(run); G.adviceT = 0.5; AS.Tips.check(run); Act.checkAchievements(run, false); }
       AS.Onboard.update(dt);
       AS.FX.updateFinale(dt);
-      intensity = run.mega.state === 'active' ? 4 : run.mega.state === 'done' ? 4.6 : 1 + Math.min(2.2, run.quarter * 0.5);
+      intensity = run.mega.state === 'active' ? 4 + run.sys * 0.3 : run.mega.state === 'done' ? 4.6 : 1 + Math.min(2.2, run.sys * 0.8 + run.sq * 0.5);
       tension = run.conf < 30 ? (30 - run.conf) / 30 : 0;
       if (G.ff) { updateFF(); }
       else if (run.over) {
@@ -241,7 +244,7 @@
         }
       }
       G.fitView(G.demo);
-      G.cam.x -= (G.W * 0.66 - G.W / 2) / G.cam.z;
+      G.cam.x -= (G.W * 0.66 - G.W / 2) / G.cam.zr;
     }
     if (AS.Music) AS.Music.update(G.settings.mute ? 0 : intensity, tension);
   }
@@ -262,7 +265,8 @@
       if (G.shake > 0) { const a = Math.min(3, G.shake * 3); sx = Math.round((Math.random() * 2 - 1) * a); sy = Math.round((Math.random() * 2 - 1) * a); }
       ctx.save();
       ctx.beginPath(); ctx.rect(0, G.mode === 'menu' ? 0 : G.HUD_H, G.W, G.mode === 'menu' ? G.H : G.mapBottom() - G.HUD_H); ctx.clip();
-      ctx.setTransform(G.cam.z, 0, 0, G.cam.z, Math.round(-G.cam.x * G.cam.z) + sx, Math.round(-G.cam.y * G.cam.z) + sy);
+      const z = G.cam.zr;
+      ctx.setTransform(z, 0, 0, z, Math.round(-G.cam.x * z) + sx, Math.round(-G.cam.y * z) + sy);
       ctx.imageSmoothingEnabled = false;
       AS.World.drawWorld(ctx, run, G.time, interactive);
       ctx.restore();
@@ -292,9 +296,32 @@
         for (let i = 0; i < 6; i++) D.dim(ctx, cw + i * 6, 0, 6, G.H, 0.6 - i * 0.1);
       }
     }
+    if (G.warpFx) drawWarp(ctx);
     if (G.flash > 0) { ctx.fillStyle = 'rgba(232,226,207,' + (G.flash * 0.85).toFixed(3) + ')'; ctx.fillRect(0, 0, G.W, G.H); }
     AS.Screens.draw(ctx, dt);
     G.drawTooltip(ctx, dt);
+  }
+  /** Warp: star streaks rush out from the centre, then the new system's name stamps in. */
+  function drawWarp(ctx) {
+    const w = G.warpFx, t = w.t, cx = G.W / 2, cy = G.mapMidY();
+    if (t < 1.6) {
+      const k = U.easeOut(t / 1.6), a = 1 - t / 1.6;
+      ctx.fillStyle = 'rgba(13,14,16,' + (0.75 * a).toFixed(3) + ')'; ctx.fillRect(0, 0, G.W, G.H);
+      for (let i = 0; i < 90; i++) {
+        const ang = U.hash2(i, 3, 7) * U.TAU, r0 = 10 + U.hash2(i, 5, 7) * 60, len = 30 + 220 * k * (0.5 + U.hash2(i, 9, 7));
+        const col = PAL[[31, 14, 13, 12, 7][i % 5]];
+        ctx.fillStyle = col;
+        for (let s = 0; s < len; s += 2) ctx.fillRect(Math.round(cx + Math.cos(ang) * (r0 + s * k * 2)), Math.round(cy + Math.sin(ang) * (r0 + s * k * 2) * 0.6), 1, 1);
+      }
+    }
+    if (t > 0.5 && t < 3.6) {
+      const run = w.run, n = run.sys + 1;
+      const k = U.clamp((t - 0.5) * 3, 0, 1) * U.clamp((3.6 - t) * 2, 0, 1);
+      ctx.globalAlpha = k;
+      AS.Font.logo(ctx, 'SYSTEM ' + n, cx, cy - 22, G.W >= 640 ? 4 : 3);
+      D.text(ctx, run.sysName + (n === AS.CONFIG.campaign.systems.length ? '  -  FINAL SYSTEM' : ''), cx, cy + 12, 13, { align: 'center' });
+      ctx.globalAlpha = 1;
+    }
   }
   function overlayText(ctx, a, b) {
     const y = Math.round((G.HUD_H + G.mapBottom()) / 2) - 14;

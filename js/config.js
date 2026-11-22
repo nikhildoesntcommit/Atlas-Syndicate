@@ -49,11 +49,22 @@
       rewardMult: 1.9, rewardBase: 120, confWin: 6, confFail: 8, fulfilRate: 12,
     },
     board: {
-      start: 100, quarterSeconds: 180, firstTarget: 650, targetGrowth: 1.3, targetGrowthLate: 1.18, lateFrom: 6,
+      start: 100, quarterSeconds: 180, firstTarget: 650, targetGrowth: 1.24, targetGrowthLate: 1.12, lateFrom: 6,
       missScale: 35, missMax: 30, hitBonus: 6,
       starveDrain: 0.08, debtDrain: 0.05, debtDrainPer1k: 0.06, debtDrainMax: 0.3, colonyLostPenalty: 20,
     },
-    discovery: { waves: [150, 330, 510, 690, 870], startKnownR: 112 },
+    discovery: { startKnownR: 112 },
+    // a run is a campaign across three star systems; each jump gate warps you to the next, harder one
+    campaign: {
+      systems: [
+        { name: 'SYSTEM 1', unlock: 330, minWorlds: 3, target: 1.0, waves: [80, 170, 260, 350] },
+        { name: 'SYSTEM 2', unlock: 210, minWorlds: 3, target: 1.15, waves: [50, 120, 190, 260, 330] },
+        { name: 'SYSTEM 3', unlock: 210, minWorlds: 3, target: 1.3, waves: [50, 120, 190, 260, 330] },
+      ],
+      warpDelay: 6, warpConf: 25, capitalNames: ['ATLAS PRIME', 'ATLAS II', 'ATLAS III'],
+    },
+    abilities: { boost: { dur: 15, cooldown: 70, mult: 2 }, deflect: { base: 120, perQ: 30 } },
+    autoAssignEvery: 1,
     events: {
       startAt: 200, firstJitter: 30, intervalMax: 78, intervalMin: 30, intervalDecPerMin: 1.8, warn: 8,
       sevPerQuarter: 0.08,
@@ -70,16 +81,18 @@
       blight: { w: 0.5, dur: 35 },
     },
     mega: {
-      name: 'JUMP GATE', unlockAt: 1080, minWorlds: 4, storage: 400, payFrac: 0.9,
+      name: 'JUMP GATE', storage: 400, payFrac: 0.9,
       stageConf: 12, stageGrant: 1200, freeFreighters: 3,
       bonus: 20000, timeBonusPerSec: 15, timeBonusBy: 2400,
-      stages: [
-        { name: 'FRAME', req: { ore: 120, alloy: 20 } },
-        { name: 'RING', req: { parts: 22, gas: 70, alloy: 15 } },
-        { name: 'IGNITION', req: { ore: 80, food: 70, parts: 16 } },
+      stages: [{ name: 'FRAME' }, { name: 'RING' }, { name: 'IGNITION' }],
+      // each system's gate asks for what you can make by then: basics, then gas, then parts
+      reqBySystem: [
+        [{ ore: 40 }, { ice: 40, alloy: 8 }, { food: 40 }],
+        [{ ore: 60 }, { gas: 25, alloy: 10 }, { food: 45, ice: 30 }],
+        [{ ore: 70, alloy: 10 }, { gas: 25, parts: 5 }, { food: 45, parts: 5 }],
       ],
     },
-    score: { perSecond: 3, perContract: 250, perPeakPop: 10, perStage: 3000 },
+    score: { perSecond: 3, perContract: 250, perPeakPop: 10, perStage: 2000, perSystem: 8000 },
     history: { every: 10 },
     selftest: { minutes: 45, seed: 20261117 },
     save: { every: 10 },
@@ -230,10 +243,12 @@
     { id: 'contr10',  name: 'CONTRACTOR',        desc: 'Complete 10 contracts in one run.' },
     { id: 'rich',     name: 'HIGH ROLLER',       desc: 'Earn 100,000 credits in one run.' },
     { id: 'comeback', name: 'COMEBACK',          desc: 'Climb from below 20 confidence to above 60.' },
-    { id: 'megaup',   name: 'MEGAPROJECT',       desc: 'Unlock the megaproject.' },
-    { id: 'megadone', name: 'GATE OPEN',         desc: 'Complete the megaproject.' },
-    { id: 'speed',    name: 'FAST TRACK',        desc: 'Complete the megaproject before 26:00.' },
-    { id: 'hard',     name: 'HARD TERMS',        desc: 'Complete the megaproject on a x1.15+ charter.' },
+    { id: 'megaup',   name: 'MEGAPROJECT',       desc: 'Unlock a jump gate.' },
+    { id: 'warp',     name: 'FIRST JUMP',        desc: 'Open a jump gate and warp to a new system.' },
+    { id: 'megadone', name: 'ALL GATES OPEN',    desc: 'Finish all three star systems.' },
+    { id: 'speed',    name: 'FAST TRACK',        desc: 'Finish all three systems before 35:00.' },
+    { id: 'hard',     name: 'HARD TERMS',        desc: 'Finish all three systems on a x1.15+ charter.' },
+    { id: 'shield',   name: 'SHIELDS UP',        desc: 'Deflect 3 meteors in one run.' },
     { id: 'clean',    name: 'CLEAN SHEET',       desc: 'Reach 15:00 with no lost world and no failed contract.' },
     { id: 'daily',    name: 'DAILY SHIFT',       desc: 'Finish a run of the Daily System.' },
   ];

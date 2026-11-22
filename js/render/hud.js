@@ -30,7 +30,7 @@
     G.tip(78, 0, 82, 13, 'BOARD CONFIDENCE: YOUR LIFE BAR. AT ZERO THE RUN ENDS. LOST BY STARVING WORLDS, DEBT, FAILED CONTRACTS AND MISSED TARGETS.');
     ctx.drawImage(AS.Spr.icons.clock, 162, 4); T(ctx, U.fmtTime(run.t), 169, 4, 7);
     G.tip(160, 0, 30, 13, 'TIME PLAYED. EVERY SECOND ADDS TO YOUR SCORE.');
-    T(ctx, 'Q' + (run.quarter + 1), 193, 4, 5);
+    T(ctx, 'Q' + (run.sq + 1), 193, 4, 5);
     const qf = U.safeDiv(G.disp.q, run.target, 0);
     D.bar(ctx, 205, 3, 30, 7, qf, qf >= 1 ? 22 : 12);
     T(ctx, U.fmtNum(G.disp.q) + '/' + U.fmtNum(run.target), 238, 4, qf >= 1 ? 22 : 7);
@@ -83,22 +83,24 @@
   /* ---------- megaproject widget (top centre) ---------- */
   H.drawMega = function (ctx, run) {
     const M = C.mega, w = 168, x = Math.round(G.W / 2 - w / 2), y = 17;
-    if (run.mega.state === 'locked') {
-      const left = M.unlockAt - run.t, worlds = S.colonies(run).length;
-      if (left > 300 && worlds >= M.minWorlds) return y;
-      const txt = left > 0 ? 'MEGAPROJECT IN ' + U.fmtTime(left) : 'MEGAPROJECT: OWN ' + M.minWorlds + ' WORLDS (' + worlds + ')';
-      const tw = D.tw(txt) + 12;
-      D.frame(ctx, Math.round(G.W / 2 - tw / 2), y, tw, 10, 1, 4);
+    const SC = S.sysCfg(run), sysTxt = 'SYSTEM ' + (run.sys + 1) + '/' + AS.CONFIG.campaign.systems.length;
+    if (run.mega.state !== 'active') {   // the goal line: always says what you are working towards
+      const left = Math.ceil(SC.unlock - (run.t - run.sysStart)), worlds = S.colonies(run).length;
+      const txt = run.mega.state === 'done' ? sysTxt + ' - WARPING...'
+        : left > 0 ? sysTxt + ' - GATE IN ' + U.fmtTime(left) + (worlds < SC.minWorlds ? ' - WORLDS ' + worlds + '/' + SC.minWorlds : '')
+          : sysTxt + ' - CLAIM ' + (SC.minWorlds - worlds) + ' MORE FOR THE GATE';
+      const tw = D.tw(txt) + 14;
+      D.frame(ctx, Math.round(G.W / 2 - tw / 2), y, tw, 11, 1, 12);
       ctx.drawImage(AS.Spr.icons.lock, Math.round(G.W / 2 - tw / 2) + 3, y + 3);
-      TS(ctx, txt, G.W / 2 + 4, y + 3, left < 30 ? 13 : 6, 'center');
-      G.tip(G.W / 2 - tw / 2, y, tw, 10, 'THE MEGAPROJECT UNLOCKS AT ' + U.fmtTime(M.unlockAt) + ' IF YOU OWN AT LEAST ' + M.minWorlds + ' WORLDS. FINISHING IT ENDS THE RUN WITH A BIG SCORE BONUS.');
-      return y + 12;
+      TS(ctx, txt, G.W / 2 + 5, y + 3, left < 30 || run.mega.state === 'done' ? 13 : 7, 'center');
+      G.tip(G.W / 2 - tw / 2, y, tw, 11, 'GOAL: EACH SYSTEM HAS A JUMP GATE. IT UNLOCKS ' + U.fmtTime(SC.unlock) + ' INTO THE SYSTEM ONCE YOU OWN ' + SC.minWorlds + ' WORLDS. DELIVER ITS 3 STAGES TO WARP ON. OPEN ALL 3 GATES TO WIN.');
+      return y + 13;
     }
     if (run.mega.state !== 'active') return y;
     const st = S.megaStage(run), goods = Object.keys(st.req);
     const h = 13 + goods.length * 7;
     D.plate(ctx, x, y, w, h, 1);
-    T(ctx, M.name + '  ' + (run.mega.stage + 1) + '/' + M.stages.length + ' ' + st.name, x + 5, y + 3, 13);
+    T(ctx, 'S' + (run.sys + 1) + ' GATE  ' + (run.mega.stage + 1) + '/' + M.stages.length + ' ' + st.name, x + 5, y + 3, 13);
     TS(ctx, Math.round(S.megaFraction(run) * 100) + '%', x + w - 5, y + 3, 7, 'right');
     goods.forEach((g, i) => {
       const yy = y + 11 + i * 7, need = st.req[g], got = Math.min(need, run.mega.done[g]);
@@ -158,7 +160,23 @@
     const y = G.mapBottom() - 14;
     G.button(ctx, G.W - 52, y, 14, 11, '+', () => G.zoomStep(1), { tip: 'ZOOM IN (WHEEL / E / PINCH).' });
     G.button(ctx, G.W - 37, y, 14, 11, '-', () => G.zoomStep(-1), { tip: 'ZOOM OUT (WHEEL / Q).' });
-    G.button(ctx, G.W - 22, y, 20, 11, 'FIT', () => G.fitView(G.run, true), { tip: 'SHOW EVERY KNOWN WORLD (R). DRAG EMPTY SPACE TO PAN.' });
+    G.button(ctx, G.W - 22, y, 20, 11, 'FIT', () => G.fitView(G.run, true), { tip: 'SHOW EVERY KNOWN WORLD (R). DRAG ANYWHERE TO PAN.' });
+    // BOOST: the player's active ability, with a recharge meter
+    const run = G.run, B = AS.CONFIG.abilities.boost, bx = G.W - 112, on = run.boostT > 0, ready = run.boostCd <= 0;
+    G.button(ctx, bx, y, 56, 11, on ? 'BOOST ' + Math.ceil(run.boostT) : ready ? 'BOOST (B)' : 'BOOST', () => AS.Act.boost(), { primary: ready, active: on, tip: 'BOOST (B): ALL FREIGHTERS FLY AT DOUBLE SPEED FOR ' + B.dur + ' S. RECHARGES IN ' + B.cooldown + ' S.' });
+    if (!ready && !on) { D.rect(ctx, bx + 1, y + 9, 54, 1, 0); D.rect(ctx, bx + 1, y + 9, Math.round(54 * (1 - run.boostCd / B.cooldown)), 1, 13); }
+  };
+  /** The facility this world would benefit from most (shown as BEST in the build menu). */
+  H.recommend = function (run, b) {
+    const has = t => b.fac.some(f => f && f.type === t);
+    const map = { ore: 'mine', ice: 'drill', gas: 'skimmer' };
+    if ((b.starving || AS.Bot.foodBalance(run) < 0.2) && b.dep.ice >= 0.9) return !has('drill') ? 'drill' : !has('agri') ? 'agri' : 'drill';
+    const ext = ['ore', 'ice', 'gas'].filter(g => b.dep[g]).sort((a, c) => b.dep[c] - b.dep[a]);
+    for (const g of ext) if (!has(map[g])) return map[g];
+    if (b.dep.ore && !has('smelter')) return 'smelter';
+    if (b.dep.gas >= 1 && !has('fab') && S.productionRate(run, 'alloy') > 0.2) return 'fab';
+    if (b.pop >= S.housing(run, b) - 0.5) return 'habitat';
+    return ext.length ? map[ext[0]] : 'habitat';
   };
 
   /* ---------- bottom console ---------- */
@@ -257,6 +275,7 @@
     if (b.boomT > 0) TS(ctx, 'RICH SEAM ' + Math.ceil(b.boomT) + 'S', x, y0 + 60, 22);
     else if (b.blightT > 0) TS(ctx, 'BLIGHT ' + Math.ceil(b.blightT) + 'S', x, y0 + 60, 17);
     else TS(ctx, b.prime ? 'CAPITAL: SELLS GOODS' : 'CLICK A SLOT TO BUILD', x, y0 + 60, 4);
+    G.button(ctx, x + 100, y0 + 30, 62, 11, G.link ? 'PICK A WORLD' : 'NEW ROUTE', () => { G.link = { from: b.id }; G.popup = null; AS.Sfx.play('click'); G.showToast('CLICK THE WORLD TO CONNECT ' + b.name + ' TO', 13); }, { active: !!G.link, tip: 'ADD ANOTHER FREIGHT ROUTE FROM THIS WORLD. NEW WORLDS ARE LINKED TO THE CAPITAL AUTOMATICALLY.' });
     const kx = G.W - 104;
     D.rect(ctx, kx - 5, y0 + 4, 1, G.CONSOLE_H - 8, 0);
     TS(ctx, 'STOCK  MAX ' + cap, kx, y0 + 5, 5);
@@ -340,7 +359,7 @@
     if (r.halted > 0 || run.flareT > 0) TS(ctx, 'STOPPED ' + Math.ceil(Math.max(r.halted, run.flareT)) + 'S', 180, y0 + 24, 17);
     T(ctx, 'FREIGHTERS', 6, y0 + 37, 5);
     T(ctx, own.length, 56, y0 + 37, 13);
-    G.button(ctx, 68, y0 + 34, 18, 12, '-', () => AS.Act.freighters(r, -1), { disabled: !own.length, tip: 'TAKE A FREIGHTER OFF THIS ROUTE (-).' });
+    G.button(ctx, 68, y0 + 34, 18, 12, '-', () => AS.Act.freighters(r, -1), { disabled: !own.length, tip: 'PARK A FREIGHTER (-). IT WAITS UNTIL YOU ADD IT BACK WITH +.' });
     G.button(ctx, 88, y0 + 34, 18, 12, '+', () => AS.Act.freighters(r, 1), { primary: true, tip: S.idleFreighters(run).length ? 'PUT AN IDLE FREIGHTER ON THIS ROUTE (+).' : 'NO IDLE FREIGHTERS: + BUYS ONE FOR ' + S.freighterCost(run) + ' CR.' });
     H.plusBtn = { x: 88, y: y0 + 34 + (G.H - G.CONSOLE_H - y0), w: 18, h: 12 };
     TS(ctx, 'IDLE ' + S.idleFreighters(run).length, 112, y0 + 37, 6);
@@ -357,8 +376,9 @@
   H.siteConsole = function (ctx, run, b, y0) {
     const M = C.mega;
     T(ctx, M.name + ' - MEGAPROJECT', 6, y0 + 5, 13);
-    TS(ctx, 'FINISH ALL ' + M.stages.length + ' STAGES TO WIN THE RUN. BONUS ' + U.fmtInt(M.bonus) + ' + TIME BONUS', 6, y0 + 15, 6);
-    M.stages.forEach((st, i) => {
+    TS(ctx, S.lastSystem(run) ? 'FINAL GATE: FINISH ALL ' + M.stages.length + ' STAGES TO WIN THE RUN' : 'FINISH ALL ' + M.stages.length + ' STAGES TO WARP TO SYSTEM ' + (run.sys + 2), 6, y0 + 15, 6);
+    M.stages.forEach((st0, i) => {
+      const st = { name: st0.name, req: S.stageReq(run, i) };
       const x = 6 + i * 118, y = y0 + 25;
       const doneSt = i < run.mega.stage || run.mega.state === 'done', cur = i === run.mega.stage && run.mega.state === 'active';
       D.frame(ctx, x, y, 112, 42, cur ? 2 : 1, cur ? 12 : doneSt ? 21 : 3);
@@ -393,18 +413,22 @@
     const k = U.easeOut(U.clamp((G.time - (pu.t || 0)) * 8, 0, 1));
     if (pu.kind === 'build') {
       if (b.fac[pu.slot]) { G.popup = null; return; }
-      const w = 196, h = AS.FAC_KEYS.length * 11 + 16;
+      const w = 212, h = AS.FAC_KEYS.length * 11 + 16;
       const x = U.clamp(sx - 8, 2, G.W - w - 2), y = Math.round(top - h - 3 + (1 - k) * 10);
       D.plate(ctx, x, y, w, h);
       G.block(x, y, w, h);
       T(ctx, 'BUILD IN SLOT ' + (pu.slot + 1), x + 6, y + 5, 12);
       H.buildRows = [];
+      const rec = H.recommend(run, b);
       AS.FAC_KEYS.forEach((key, i) => {
         const F = AS.FAC[key], yy = y + 14 + i * 11;
         const noDep = F.deposit && !(b.dep[F.deposit] > 0), poor = run.credits < F.cost;
         if (!noDep && G.pointIn(G.mouse, x + 3, yy, w - 6, 11)) D.rect(ctx, x + 3, yy, w - 6, 11, 3);
+        const best = !noDep && key === rec;
+        if (best) D.rect(ctx, x + 3, yy, w - 6, 11, 20);
         TS(ctx, F.name, x + 7, yy + 3, noDep ? 3 : poor ? 5 : 7);
-        TS(ctx, noDep ? 'NO DEPOSIT' : AS.FAC_DESC[key], x + 70, yy + 3, noDep ? 16 : 5);
+        if (best) TS(ctx, 'BEST', x + 7 + D.tw(F.name) + 4, yy + 3, 13);
+        TS(ctx, noDep ? 'NO DEPOSIT' : AS.FAC_DESC[key], x + 92, yy + 3, noDep ? 16 : 5);
         if (!noDep) TS(ctx, F.cost, x + w - 7, yy + 3, poor ? 17 : 13, 'right');
         G.btns.push({ x: x + 3, y: yy, w: w - 6, h: 11, fn: () => AS.Act.build(b, pu.slot, key) });
         H.buildRows.push({ key, x: x + 3, y: yy, w: w - 6, h: 11 });

@@ -20,6 +20,9 @@
     if (run.over) return;
     S.updateExchange(run, dt);
     S.updateFinance(run, dt);
+    if (run.boostT > 0) run.boostT = Math.max(0, run.boostT - dt);
+    if (run.boostCd > 0) run.boostCd = Math.max(0, run.boostCd - dt);
+    if (run.steps % Math.round(C.autoAssignEvery / C.sim.step) === 0) S.autoAssign(run);
     for (const r of run.routes) if (r.halted > 0) r.halted = Math.max(0, r.halted - dt);
     if (run.banner) { run.banner.t -= dt; if (run.banner.t <= 0) run.banner = null; }
     const k = Math.min(1, dt / 6);
@@ -38,6 +41,7 @@
       return;
     }
     S.director(run);
+    if (run.warpAt && run.t >= run.warpAt && !run.over) S.enterSystem(run);
     if (run.over) S.record(run);
   };
 
@@ -47,12 +51,13 @@
     const tenure = Math.floor(U.fin(run.t)) * SC.perSecond;
     const contracts = run.contractsDone * SC.perContract;
     const pop = Math.round(run.peakPop) * SC.perPeakPop;
-    const stages = run.mega.stage * SC.perStage;
+    const stages = (run.stagesDone || 0) * SC.perStage;
+    const systems = (run.sysDone || 0) * SC.perSystem;
     let mega = 0;
-    if (run.mega.state === 'done') mega = M.bonus + Math.max(0, Math.round((M.timeBonusBy - run.mega.completedAt) * M.timeBonusPerSec));
-    const base = revenue + tenure + contracts + pop + stages + mega;
+    if (run.won) mega = M.bonus + Math.max(0, Math.round((M.timeBonusBy - run.mega.completedAt) * M.timeBonusPerSec));
+    const base = revenue + tenure + contracts + pop + stages + systems + mega;
     const mult = AS.CHARTERS[run.charter].score;
-    return { revenue, tenure, contracts, pop, stages, mega, base, mult, total: Math.round(base * mult) };
+    return { revenue, tenure, contracts, pop, stages, systems, mega, base, mult, total: Math.round(base * mult) };
   };
   S.rankTitle = score => AS.RANKS.find(t => score >= t[0])[1];
 
@@ -117,6 +122,8 @@
       if (A.site && B.site) { fails.push('site linked to itself'); return; }
     }
     if (run.mega.stage < 0 || run.mega.stage > C.mega.stages.length) fails.push('megaproject stage out of range');
-    if (run.mega.state === 'done' && !run.won) fails.push('megaproject done but run not won');
+    if (run.sys < 0 || run.sys >= C.campaign.systems.length) fails.push('system index out of range');
+    if (run.bodies.filter(b => b.site).length !== 1) fails.push('megaproject site missing or duplicated');
+    if (run.mega.state === 'done' && !run.won && !run.warpAt) fails.push('megaproject done but neither won nor warping');
   };
 })(globalThis.AS = globalThis.AS || {});

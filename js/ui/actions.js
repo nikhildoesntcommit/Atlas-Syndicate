@@ -58,6 +58,12 @@
     }
     Act.do(d > 0 ? 'assign' : 'recall', { id: r.id }, 'click');
   };
+  Act.boost = function () {
+    const res = S.act(G.run, 'boost', {});
+    if (res.ok) { G.showToast('BOOST: FREIGHTERS AT DOUBLE SPEED', 13); }
+    else if (res.reason === 'cooldown') { G.showToast('BOOST RECHARGING: ' + res.left + 'S', 18); AS.Sfx.play('err'); }
+  };
+  Act.deflect = function (b) { const r = Act.do('deflect', { id: b.id }); return r; };
   Act.toggleTips = function () {
     G.settings.tips = !G.settings.tips; G.settings.tipsSet = true; Act.saveSettings();
     AS.Sfx.play('click');
@@ -124,10 +130,12 @@
     if (run.contractsDone >= 10) unlock('contr10');
     if (run.totalIncome >= 100000) unlock('rich');
     if (run.comeback) unlock('comeback');
-    if (run.mega.state !== 'locked') unlock('megaup');
-    if (run.mega.state === 'done') {
+    if (run.mega.state !== 'locked' || run.sysDone) unlock('megaup');
+    if (run.sysDone >= 1) unlock('warp');
+    if (run.deflected >= 3) unlock('shield');
+    if (run.won) {
       unlock('megadone');
-      if (run.mega.completedAt < 26 * 60) unlock('speed');
+      if (run.mega.completedAt < 35 * 60) unlock('speed');
       if (AS.CHARTERS[run.charter].score >= 1.15) unlock('hard');
     }
     if (run.t >= 15 * 60 && run.coloniesLost === 0 && run.contractsFailed === 0) unlock('clean');

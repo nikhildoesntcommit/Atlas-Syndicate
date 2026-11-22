@@ -11,9 +11,9 @@
 ![Atlas Syndicate title screen](docs/title.png)
 
 **A pixel-art arcade strategy game about building an interplanetary supply chain.**
-Claim worlds, build mines and factories, drag freight routes between them, and keep the Board happy long enough to build a jump gate.
+Claim worlds, build mines and factories, and keep the Board happy while you build a jump gate in each of three star systems.
 
-### ▶ [Play it in your browser](https://[YOUR-GITHUB-USERNAME].github.io/atlas-syndicate/)
+### ▶ [Play it in your browser](https://nikhildoesntcommit.github.io/Atlas-Syndicate/)
 
 No install, no account, no downloads. It works on desktop and on phones and tablets.
 
@@ -37,11 +37,13 @@ No install, no account, no downloads. It works on desktop and on phones and tabl
 ## The game
 
 Atlas Syndicate drops you into a star system with a single world, **Atlas Prime**.
-You claim more worlds, build on them, and connect them with freight routes. Freighters then decide for themselves what to carry, and every good that reaches Atlas Prime is sold.
+You claim more worlds and build on them. Each new world links itself to the capital, freighters decide for themselves where to fly and what to carry, and every good that reaches Atlas Prime is sold.
 
 Every three minutes the **Board** reviews your revenue against a target that keeps rising, and you pick one of three perks. Hit the target and confidence rises; miss it and confidence falls. If confidence reaches zero, the run is over.
 
-The system grows as you play: new worlds are discovered, events get harsher, and around the 18-minute mark a **jump gate megaproject** unlocks. Feed it three stages of goods while still meeting your targets, and the gate opens: the finale of every winning run.
+Every run is a **campaign across three star systems**. In each one, new worlds are discovered as you play and a **jump gate** unlocks after a few minutes. Feed it three stages of goods and it opens: you warp into the next, harder system with your credits, perks and fleet. Open the third gate to win.
+
+Two abilities keep your hands busy: **BOOST** sends every freighter at double speed for a few seconds, and **DEFLECT** shoots down a meteor during its 8-second warning.
 
 Every system is generated from a seed, so no two runs are the same. You can share any run with a short code so a friend can play the exact same system.
 
@@ -52,26 +54,30 @@ Every system is generated from a seed, so no two runs are the same. You can shar
 | | |
 | :---: | :---: |
 | ![A guided first minute](docs/onboarding.png) | ![An early colony](docs/colony.png) |
-| **A guided first minute.** Four highlighted clicks teach the whole loop. | **An early colony.** Atlas Prime's facilities, stock and colonists. |
+| **A guided first minute.** Three highlighted steps; the best build is marked. | **An early colony.** Atlas Prime's facilities, stock and colonists. |
+| ![Warping to the next system](docs/warp.png) | ![A new star system](docs/system2.png) |
+| **The warp.** Each finished gate jumps you to a new system. | **System 2.** A fresh map, harder targets, your fleet comes along. |
 | ![A busy freight network](docs/network.png) | ![Close-up of a freighter](docs/close-up.png) |
 | **A busy network.** Freighters carry cargo between worlds. | **Close-up.** Cargo pods, engine trails, lights on inhabited worlds. |
-| ![A meteor strike](docs/meteor-strike.png) | ![The quarterly review](docs/quarterly-review.png) |
-| **Events.** A meteor strike, announced eight seconds ahead. | **The quarterly review.** Hit the target, then pick one perk. |
+| ![Deflecting a meteor](docs/deflect.png) | ![A meteor strike](docs/meteor-strike.png) |
+| **DEFLECT.** Shoot down a meteor during its warning. | **Or take the hit.** Shock rings, debris and lost stock. |
+| ![The quarterly review](docs/quarterly-review.png) | ![The leaderboard](docs/leaderboard.png) |
+| **The quarterly review.** Hit the target, then pick one perk. | **The leaderboard.** Your best runs on this device. |
 | ![The jump gate under construction](docs/megaproject.png) | ![The jump gate opening](docs/finale.png) |
-| **The megaproject.** Three stages of deliveries build the gate. | **The finale.** The gate powers up. |
-| ![End-of-run report](docs/report.png) | ![Leaderboard](docs/leaderboard.png) |
-| **The report.** Charts, key moments and a share code. | **The leaderboard.** Your best runs on this device. |
+| **The jump gate.** Three stages of deliveries build it. | **The gate opens.** Next stop: a new system. |
+| ![End-of-run report](docs/report.png) | ![How to play](docs/how-to-play.png) |
+| **The report.** Charts, key moments and a share code. | **How to play.** Every rule and control on one screen. |
 
 ---
 
 ## How to play
 
-1. **Claim a world.** Click a world and press **CLAIM**. Worlds with ice can feed themselves; gas giants need food delivered.
-2. **Build.** Click an empty slot and choose a facility: a mine, drill or skimmer to extract resources, or a smelter, agri dome or fabricator to refine them.
-3. **Connect.** Drag from one of your worlds to another to open a freight route. Freighters pick their cargo automatically.
+1. **Claim a world.** Click a world and press **CLAIM**. It links itself to Atlas Prime and a freighter starts work. Worlds with ice can feed themselves; gas giants need food delivered.
+2. **Build.** Click an empty slot and choose a facility. The menu marks the **BEST** choice for that world.
+3. **Let it run.** Freighters choose their own routes and cargo. Buy more with **F** when worlds fill up; press **B** to **BOOST** them.
 4. **Sell.** Everything that reaches **Atlas Prime** is sold. Raw goods sell cheaply; refined **alloy** and **parts** pay much more.
 5. **Survive the Board.** Meet each quarter's revenue target. Starving worlds, debt and failed contracts all drain Board confidence, your life bar.
-6. **Build the gate.** After 18:00, deliver the jump gate's three stages to win.
+6. **Build the gate, warp on.** The goal line at the top says when the jump gate unlocks. Deliver its three stages to warp to the next system. Open all three gates to win.
 
 ```
 MINE → ORE ──┐                  SMELTER: 2 ORE → ALLOY
@@ -80,7 +86,7 @@ SKIMMER → GAS┘                  FABRICATOR: ALLOY + GAS → PARTS (best pric
                                  everything delivered to ATLAS PRIME is sold
 ```
 
-**You lose** when Board confidence reaches zero. **You win** when the jump gate is complete.
+**You lose** when Board confidence reaches zero. **You win** when the third system's jump gate is complete.
 A world whose colonists starve is lost; you can claim it again after 60 seconds. A lost run can be replayed on the same system with one click.
 
 ---
@@ -91,11 +97,13 @@ A world whose colonists starve is lost; you can claim it again after 60 seconds.
 | --- | --- | --- | --- |
 | Claim or manage a world | Click it | Tap it | |
 | Build | Click an empty slot in the bottom panel | Tap the slot | |
-| Open a freight route | Drag from your world to another | Drag from a world | |
-| Add or remove freighters | Click a route, then `+` or `-` | Tap a route, then `+` or `-` | `+` / `-` |
+| Extra freight route | Select a world, **NEW ROUTE**, click the other world | Same, with taps | `Esc` cancels |
+| Add or park freighters | Click a route, then `+` or `-` | Tap a route, then `+` or `-` | `+` / `-` |
 | Close a route | Right-click it | Tap it, then CLOSE ROUTE | `Delete` |
-| Pan the map | Drag empty space | Drag empty space | `W A S D` or arrow keys |
-| Zoom | Mouse wheel | Pinch | `Q` / `E`, `R` to fit |
+| Pan the map (glides when you let go) | Drag anywhere | Drag anywhere | `W A S D` or arrow keys |
+| Zoom (smooth) | Mouse wheel, or double-click to zoom in | Pinch, or double-tap | `Q` / `E`, `R` to fit |
+| Boost freighters | **BOOST** button | **BOOST** button | `B` |
+| Deflect a meteor | **DEFLECT** above the warned world | Tap **DEFLECT** | |
 | Pause, game speed | Top bar | Top bar | `Space`, `1` `2` `3` |
 | Buy a freighter | Bottom bar | Bottom bar | `F` |
 | Tips and advisor | `TIPS` | `TIPS` | `T` |
@@ -116,9 +124,9 @@ How Atlas Syndicate covers each game-dynamics area.
 | 1 | **Enter player name** | Asked on first launch; it can be changed from the title screen or Settings. It appears on the leaderboard. |
 | 2 | **Main menu** | Continue, New Game, Daily System, Enter Code, Achievements, Leaderboard, Settings, How to Play. |
 | 3 | **Start button, controls description** | NEW GAME starts a run. **How to Play** lists the goal, production chain, rules and every control (mouse, touch, keyboard). |
-| 4 | **Player, controls** | You run the company: click, drag, tap, pinch, or the keyboard shortcuts above. |
-| 5 | **Collectibles** | Six goods (ore, ice, gas, alloy, food, parts), credits, perks and 16 achievements. |
-| 6 | **Obstacles** | 11 event types (solar storms, solar flares, meteor strikes, cargo loss, breakdowns, crop blight, fuel shortages, price swings), plus starvation, debt and rising targets. |
+| 4 | **Player, controls** | You run the company: click, drag, tap, pinch, or the keyboard shortcuts above. Two abilities: BOOST and DEFLECT. |
+| 5 | **Collectibles** | Six goods (ore, ice, gas, alloy, food, parts), credits, perks and 18 achievements. |
+| 6 | **Obstacles** | 11 event types (solar storms, solar flares, meteor strikes you can DEFLECT, cargo loss, breakdowns, crop blight, fuel shortages, price swings), plus starvation, debt and rising targets. |
 | 7 | **Game rules** | Meet each quarter's target, keep worlds fed, stay out of debt. Confidence 0 = game over; jump gate complete = win. |
 | 8 | **Game background** | Procedurally generated star systems: a dithered nebula, a parallax starfield, orbit lines, a drifting asteroid belt, and planets that rotate under a moving day/night line. |
 | 9 | **Game audio** | 32 synthesised sound effects and an industrial soundtrack that adds layers as the run gets tense. Separate music and effects volume, plus mute. |
@@ -129,13 +137,13 @@ How Atlas Syndicate covers each game-dynamics area.
 
 | # | Area | In Atlas Syndicate |
 | --- | --- | --- |
-| 1 | **Multiple levels** | Each 3-minute quarter is a level with a higher target, followed by the three gate stages. Eight charters change the rules, and a Daily System is the same for everyone each day. |
+| 1 | **Multiple levels** | **Three star systems per run**, each a level with its own map, rising targets and jump gate; the gate warps you to the next. Within a system every 3-minute quarter raises the target. Eight charters change the rules, and a Daily System is the same for everyone each day. |
 | 2 | **Level design** | A seeded generator builds every system: ice and ore near the start, a gas giant as the first discovery, richer worlds further out, and world traits (rich seam, radiation, low gravity and more). |
-| 3 | **Challenge design: boss fight** | The **jump gate megaproject** is the boss: three stages of large deliveries while the Board's targets and events keep escalating. |
+| 3 | **Challenge design: boss fight** | Every system ends with a **jump gate** boss: three stages of deliveries while targets and events escalate. Each gate asks for harder goods (basics, then gas, then parts); the third is the final boss. |
 | 4 | **Leaderboard** | Top 10 on this device, with player, score, time, result and charter. |
 | 5 | **Shops** | The **quarterly review** offers 3 of 23 perks. The build menu (8 facilities) and freighter purchases are the everyday shop. |
-| 6 | **Cut scene / explanation** | A four-step guided opening, an advisor panel and one-time explanation cards. The gate finale plays as a short cut scene. (The game has no characters or story by design.) |
-| 7 | **Game physics** | Worlds follow Kepler-style orbits, so route distances and trip times change constantly. Freighters accelerate and brake. Particles have gravity. Three game speeds. |
+| 6 | **Cut scene / explanation** | A three-step guided opening, a goal line, an advisor panel and one-time explanation cards. Each gate plays a finale and a warp sequence into the next system. (No characters or story, by design.) |
+| 7 | **Game physics** | Worlds follow Kepler-style orbits, so route distances and trip times change constantly. Freighters accelerate and brake; BOOST doubles their speed. The camera has momentum and smooth zoom. Particles have gravity. Three game speeds. |
 
 ### Advanced
 
@@ -147,13 +155,14 @@ How Atlas Syndicate covers each game-dynamics area.
 
 ## Features
 
-- **A run with a shape.** The map expands, events escalate, and every run ends with a climax: the gate or the Board.
-- **Automatic logistics.** Freighters decide what to carry; Atlas Prime acts as a hub that holds goods connected worlds need.
-- **Replayability.** 8 charters, 23 perks with synergies, 7 world traits, 11 event types, a Daily System and 16 achievements.
+- **Three systems per run.** Each has its own generated map and jump gate; finishing one warps you to the next, harder system.
+- **Automatic logistics.** New worlds link to the capital by themselves, freighters assign themselves to the routes that need them, and Atlas Prime holds goods for the gate and for connected worlds.
+- **Things to do in the moment.** BOOST your fleet when a quarter or a gate is close; DEFLECT meteors before they hit.
+- **Replayability.** 8 charters, 23 perks with synergies, 7 world traits, 11 event types, a Daily System and 18 achievements.
 - **End-of-run report.** Pixel charts of credits, colonists and Board confidence over time, the key moments of the run, a rank, and a share code.
 - **Juice.** Engine trails, construction scaffolding and sparks, floating credits, numbers that count up, screen shake, hazard-stripe warnings and buttons that press in.
 - **Accessible.** Colour is never the only signal: goods have distinct icon shapes, and states always come with a word or symbol. Adjustable pixel size and optional screen shake.
-- **Works everywhere.** Mouse, keyboard and touch (tap, drag, pinch). It autosaves, so a closed tab resumes where you left off.
+- **Smooth controls.** Drag anywhere to pan (with momentum), smooth animated zoom, double-click to zoom in. Mouse, keyboard and touch. It autosaves, so a closed tab resumes where you left off.
 - **Zero downloads.** Every sprite, font glyph, sound and note of music is generated in code. No images, audio files, fonts or libraries.
 
 ---
@@ -223,10 +232,10 @@ No build step and nothing to install.
 
 | Link or key | What it does |
 | --- | --- |
-| `index.html?demo` | Attract mode: the built-in player plays on its own with camera moves. `&from=1035` starts it just before the gate unlocks; `&speed=8` makes it faster. `Esc` leaves. |
+| `index.html?demo` | Attract mode: the built-in player plays on its own with camera moves. `&from=600` starts it ten minutes in; `&speed=8` makes it faster. `Esc` leaves. |
 | `index.html?seed=12345` | Play a specific system. |
 | `index.html?code=…` | Play a system from a share code (shown on the end-of-run report). |
-| `F9` during a game | Skip ahead to the megaproject; press again to fill it to 90% and see the finale. |
+| `F9` during a game | Skip ahead to the current system's jump gate; press again to fill it to 90% and watch it open and warp. |
 | `tests/selftest.html` | Run the self-test in the browser. |
 
 Run the tests with Node 16 or newer (no packages needed):

@@ -7,9 +7,9 @@
   const Tips = AS.Tips = {};
 
   const CARDS = {
-    start: 'ATLAS PRIME IS YOUR CAPITAL. EVERYTHING DELIVERED THERE IS SOLD. THE ADVISOR (TOP RIGHT) SUGGESTS YOUR NEXT STEP.',
-    claim: 'NEW WORLD. DRAG FROM ATLAS PRIME TO IT TO OPEN A ROUTE, THEN BUILD ON ITS SLOTS.',
-    route: 'FREIGHTERS PICK CARGO THEMSELVES: SURPLUS GOES WHERE IT IS NEEDED, THE REST TO ATLAS PRIME TO BE SOLD.',
+    start: 'ATLAS PRIME IS YOUR CAPITAL. EVERYTHING DELIVERED THERE IS SOLD. THE GOAL LINE (TOP) SAYS WHAT YOU ARE WORKING TOWARDS.',
+    claim: 'NEW WORLD, ALREADY LINKED TO THE CAPITAL. CLICK IT AND BUILD ON ITS SLOTS: THE BEST CHOICE IS MARKED.',
+    route: 'FREIGHTERS PICK CARGO AND ROUTES THEMSELVES. BUY MORE (F) WHEN WORLDS FILL UP. PRESS B TO BOOST THEM.',
     quarter: 'EVERY 3 MINUTES THE BOARD CHECKS REVENUE AGAINST A TARGET (TOP BAR). MISSING IT COSTS CONFIDENCE.',
     offer: 'CONTRACTS ARE OPTIONAL. TAKE ONE ONLY IF YOU ALREADY MAKE THAT GOOD. FAILING COSTS CONFIDENCE.',
     starve: 'A WORLD IS STARVING. ROUTE FOOD TO IT, OR BUILD AN ICE DRILL AND AGRI DOME THERE.',
@@ -18,13 +18,13 @@
     discover: 'A NEW WORLD WAS FOUND. THE MAP GROWS OVER TIME: OUTER WORLDS ARE RICHER BUT FURTHER AWAY.',
     traits: 'SOME WORLDS HAVE TRAITS (RICH, RAD, LOWG...). HOVER A WORLD OR CHECK ITS PANEL TO SEE WHAT THEY DO.',
     gas: 'GAS WORLD. A FABRICATOR TURNS ALLOY + GAS INTO PARTS, THE MOST VALUABLE GOOD. GAS GIANTS NEED FOOD BY ROUTE.',
-    mega: 'MEGAPROJECT UNLOCKED. DELIVER THE GOODS IN THE TOP PANEL TO THE GATE. FINISH ALL 3 STAGES TO WIN.',
+    mega: 'JUMP GATE UNLOCKED. DELIVER THE GOODS IN THE TOP PANEL. FINISH ALL 3 STAGES TO WARP TO THE NEXT SYSTEM.',
     storm: 'A SOLAR STORM STOPS ONE ROUTE FOR A WHILE. IT RESTARTS BY ITSELF.',
     flare: 'A SOLAR FLARE STOPS ALL FREIGHTERS BRIEFLY. KEEP SOME STOCK BUFFERED.',
-    meteor: 'METEOR STRIKES STOP FACILITIES AND DESTROY SOME STOCK. THEY ARE ANNOUNCED 8 S AHEAD.',
+    meteor: 'METEOR STRIKES STOP FACILITIES AND DESTROY STOCK. YOU GET 8 S WARNING: PRESS DEFLECT TO SHOOT THEM DOWN.',
     cargo: 'CARGO LOSS: ONE FREIGHTER LOSES ITS LOAD. THE REINFORCED HULLS PERK PREVENTS IT.',
     fuel: 'FUEL SHORTAGE: EVERY TRIP COSTS MORE FOR A WHILE.',
-    zoom: 'WHEEL OR PINCH TO ZOOM, DRAG EMPTY SPACE TO PAN. R OR FIT SHOWS EVERYTHING.',
+    zoom: 'DRAG ANYWHERE TO PAN, WHEEL OR PINCH TO ZOOM, DOUBLE-CLICK TO ZOOM IN. R OR FIT SHOWS EVERYTHING.',
   };
   Tips.show = function (key) {
     if (!G.settings.tips || G.seen[key] || !CARDS[key] || (AS.Onboard && AS.Onboard.active())) return;
@@ -76,14 +76,17 @@
     if (starving) return { text: starving.name + ' IS STARVING: ROUTE FOOD TO IT, OR BUILD DRILL + AGRI THERE', id: starving.id };
     if (run.credits < 0) return { text: 'IN DEBT: STOP BUILDING UNTIL CREDITS RECOVER', id: P.id };
     const noRoute = cols.find(b => !b.prime && S.neighbors(run, b).length === 0);
-    if (noRoute) return { text: 'DRAG FROM ATLAS PRIME TO ' + noRoute.name + ' TO OPEN A ROUTE', id: noRoute.id };
+    if (noRoute) return { text: 'CLICK ' + noRoute.name + ', THEN NEW ROUTE TO CONNECT IT', id: noRoute.id };
+    const meteor = run.pending.find(p => p.kind === 'meteor');
+    if (meteor) return { text: 'METEOR INCOMING: PRESS DEFLECT ABOVE THE WORLD', id: meteor.id };
     if (run.mega.state === 'active') {
       const site = S.site(run), st = S.megaStage(run);
       const links = run.routes.filter(r => r.a === site.id || r.b === site.id);
       const fl = links.reduce((n, r) => n + S.routeFreighters(run, r).length, 0);
       const missing = Object.keys(st.req).find(g => S.megaRemaining(run, g) > 0 && S.productionRate(run, g) < 0.05);
       if (missing) return { text: 'THE GATE NEEDS ' + AS.GOODS[missing].name + ' AND NOTHING MAKES IT: BUILD FOR IT', id: site.id };
-      if (fl < 4) return { text: 'PUT MORE FREIGHTERS ON ROUTES TO THE ' + C.mega.name, id: site.id };
+      if (run.boostCd <= 0) return { text: 'PRESS B TO BOOST YOUR FREIGHTERS AND SPEED UP THE GATE', id: site.id };
+      if (fl < 4) return { text: 'BUY FREIGHTERS (F): THEY JOIN THE GATE ROUTE BY THEMSELVES', id: site.id };
     }
     if (!cols.some(b => !b.prime && b.dep.ice >= 0.9)) {
       const t = free.filter(b => b.dep.ice >= 0.9).sort((a, b) => S.planeDist(a, P) - S.planeDist(b, P))[0];
@@ -91,13 +94,13 @@
     }
     const bare = cols.find(b => !b.prime && !b.fac.some(f => f && AS.FAC[f.type].extract) && b.fac.includes(null));
     if (bare) { const g = ['ice', 'ore', 'gas'].find(k => bare.dep[k]); return { text: 'BUILD ' + (g === 'ice' ? 'AN ICE DRILL' : g === 'ore' ? 'AN ORE MINE' : 'A GAS SKIMMER') + ' ON ' + bare.name, id: bare.id }; }
-    const idle = S.idleFreighters(run).length;
-    if (idle && run.routes.length) return { text: idle + ' IDLE FREIGHTER' + (idle > 1 ? 'S' : '') + ': CLICK A ROUTE, PRESS +', id: 0 };
-    if (run.routes.find(r => S.routeFreighters(run, r).length === 0)) return { text: 'A ROUTE HAS NO FREIGHTERS: CLICK IT, PRESS +', id: 0 };
+    const parked = S.idleFreighters(run).filter(f => f.parked).length;
+    if (parked && run.routes.length) return { text: parked + ' PARKED FREIGHTER' + (parked > 1 ? 'S' : '') + ': CLICK A ROUTE, PRESS +', id: 0 };
+    if (run.routes.length > run.freighters.length) return { text: 'MORE ROUTES THAN FREIGHTERS: BUY ONE (F)', id: 0 };
     const offer = run.contracts.find(c => !c.accepted && S.productionRate(run, c.good) * C.contracts.deadline * 0.8 >= c.qty);
     if (offer) return { text: 'GOOD CONTRACT: ' + offer.qty + ' ' + AS.GOODS[offer.good].name + '. PRESS TAKE', id: 0 };
     const full = cols.find(b => b.fac.some(f => f && f.status === 'full'));
-    if (full) return { text: full.name + ' IS FULL: ADD A FREIGHTER TO ITS ROUTE', id: full.id };
+    if (full) return { text: full.name + ' IS FULL: BUY A FREIGHTER (F)', id: full.id };
     if (!cols.some(b => b.dep.gas >= 1) && cols.length >= 2) {
       const t = free.filter(b => b.dep.gas >= 1).sort((a, b) => S.planeDist(a, P) - S.planeDist(b, P))[0];
       if (t) return { text: 'CLAIM ' + t.name + ' (GAS). GAS + ALLOY = PARTS, THE BEST EARNER', id: t.id };
@@ -106,9 +109,9 @@
       const host = cols.find(b => b.fac.includes(null) && b.prime) || cols.find(b => b.fac.includes(null));
       if (host) return { text: 'BUILD A FABRICATOR ON ' + host.name + ' (ALLOY + GAS > PARTS)', id: host.id };
     }
-    if (run.mega.state === 'locked' && cols.length < C.mega.minWorlds) {
+    if (run.mega.state === 'locked' && cols.length < S.sysCfg(run).minWorlds) {
       const t = free.sort((a, b) => S.planeDist(a, P) - S.planeDist(b, P))[0];
-      if (t) return { text: 'THE MEGAPROJECT NEEDS ' + C.mega.minWorlds + ' WORLDS. CLAIM ' + t.name, id: t.id };
+      if (t) return { text: 'THE GATE NEEDS ' + S.sysCfg(run).minWorlds + ' WORLDS. CLAIM ' + t.name, id: t.id };
     }
     const crowded = cols.find(b => b.pop >= S.housing(run, b) - 0.5 && b.fac.includes(null) && !b.starving);
     if (crowded) return { text: crowded.name + ' IS FULL OF PEOPLE: A HABITAT MEANS MORE TAX', id: crowded.id };

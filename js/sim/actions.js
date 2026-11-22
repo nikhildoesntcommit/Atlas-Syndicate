@@ -23,7 +23,8 @@
     const n = S.colonies(run).length;
     run.stats.maxColonies = Math.max(run.stats.maxColonies, n);
     run.fx.push({ type: 'claim', id: b.id });
-    run.banner = { text: b.name + ' CLAIMED', col: 13, kind: 'good', t: 3 };
+    run.banner = { text: b.name + ' CLAIMED - LINKED TO ' + S.prime(run).name, col: 13, kind: 'good', t: 3 };
+    S.autoLink(run, b);
     S.logMoment(run, 'CLAIMED ' + b.name + ' (WORLD ' + n + ')', 'claim');
     return { ok: true, cost };
   };
@@ -65,6 +66,37 @@
     run.fx.push({ type: 'route', id: r.id });
     return { ok: true, route: r, cost };
   };
+  /** New worlds are linked to the capital for free, and an available freighter starts work on the link. */
+  S.autoLink = function (run, b) {
+    const P = S.prime(run);
+    if (!P || P === b || S.routeBetween(run, P, b)) return null;
+    const r = { id: run.nextId++, a: P.id, b: b.id, cost: 0, halted: 0, moved: 0, movedLog: [], auto: true };
+    run.routesBuilt++;
+    run.routes.push(r);
+    run.routeMap.set(r.id, r);
+    const idle = S.idleFreighters(run).find(f => !f.parked) || S.idleFreighters(run)[0];
+    if (idle) S.assignFreighter(run, r, idle);
+    run.fx.push({ type: 'route', id: r.id });
+    return r;
+  };
+  /** Idle freighters (not parked by the player) join the route that needs them most. Runs once a second. */
+  S.autoAssign = function (run) {
+    for (const f of run.freighters) {
+      if (f.route || f.parked) continue;
+      let best = null, bs = -1;
+      for (const r of run.routes) {
+        const A = S.getBody(run, r.a), B = S.getBody(run, r.b);
+        if (!A || !B) continue;
+        let s = 1;
+        for (const g of AS.GOOD_KEYS) s += Math.min(S.surplus(A, g, B), S.needFor(run, B, g, A)) + Math.min(S.surplus(B, g, A), S.needFor(run, A, g, B));
+        if (A.starving || B.starving) s += 40;
+        s /= 1 + S.routeFreighters(run, r).length * 1.5;
+        if (s > bs) { bs = s; best = r; }
+      }
+      if (!best) return;
+      S.assignFreighter(run, best, f);
+    }
+  };
   S.removeRoute = function (run, r, refund) {
     if (!r || !run.routeMap.has(r.id)) return { ok: false, reason: 'gone' };
     for (const f of run.freighters) if (f.route === r.id) S.settleFreighter(run, f);
@@ -78,6 +110,7 @@
     if (!r || !run.routeMap.has(r.id)) return { ok: false, reason: 'gone' };
     f = f || S.idleFreighters(run)[0];
     if (!f) return { ok: false, reason: 'nofreighter' };
+    f.parked = false;
     const A = S.getBody(run, r.a), B = S.getBody(run, r.b);
     const n = S.routeFreighters(run, r).length;
     f.route = r.id;
@@ -93,7 +126,9 @@
   S.recallFreighter = function (run, r) {
     const own = S.routeFreighters(run, r);
     if (!own.length) return { ok: false, reason: 'none' };
-    S.settleFreighter(run, own.find(f => f.state === 'dock' && !f.load) || own[own.length - 1]);
+    const f = own.find(x => x.state === 'dock' && !x.load) || own[own.length - 1];
+    S.settleFreighter(run, f);
+    f.parked = true;   // the player took it off; it waits until they reassign it
     return { ok: true };
   };
   S.buyFreighter = function (run) {
@@ -102,6 +137,27 @@
     S.spend(run, cost);
     run.freightersBought++;
     return { ok: true, cost, f: S.addFreighter(run) };
+  };
+  S.boost = function (run) {
+    if (run.boostCd > 0) return { ok: false, reason: 'cooldown', left: Math.ceil(run.boostCd) };
+    run.boostT = C.abilities.boost.dur;
+    run.boostCd = C.abilities.boost.cooldown;
+    run.fx.push({ type: 'boost' });
+    return { ok: true };
+  };
+  S.deflectCost = run => C.abilities.deflect.base + C.abilities.deflect.perQ * run.quarter;
+  S.deflect = function (run, id) {
+    const p = run.pending.find(x => x.kind === 'meteor' && x.id === id);
+    if (!p) return { ok: false, reason: 'gone' };
+    const cost = S.deflectCost(run);
+    if (run.credits < cost) return { ok: false, reason: 'credits', cost };
+    S.spend(run, cost);
+    run.pending = run.pending.filter(x => x !== p);
+    run.deflected++;
+    run.banner = { text: 'METEOR DEFLECTED', col: 22, kind: 'good', t: 3 };
+    run.fx.push({ type: 'deflect', id });
+    S.logMoment(run, 'METEOR DEFLECTED', 'good');
+    return { ok: true, cost };
   };
   S.acceptContract = function (run, c) {
     if (!c || c.accepted || !run.contracts.includes(c)) return { ok: false, reason: 'gone' };
@@ -165,6 +221,8 @@
       case 'accept': res = S.acceptContract(run, contract(a.id)); break;
       case 'decline': res = S.declineContract(run, contract(a.id)); break;
       case 'perk': res = S.choosePerk(run, a.key); break;
+      case 'boost': res = S.boost(run); break;
+      case 'deflect': res = S.deflect(run, a.id); break;
       default: res = { ok: false, reason: 'unknown' };
     }
     if (run.actions && res.ok) run.actions.push([run.steps, name, a]);
