@@ -1,4 +1,4 @@
-/* ATLAS SYNDICATE v5 — audio/sfx.js
+/* ATLAS SYNDICATE v6 — audio/sfx.js
    WebAudio context, mix buses (master / music / sfx) and procedural sound effects.
    Nothing is loaded: every sound is synthesised. Audio starts after the first user gesture. */
 (function (AS) {
@@ -127,6 +127,8 @@
         case 'capture': A.thud(60, 0.6, 0.5); [196, 247, 294, 392].forEach((f, i) => A.tone(f, 0.22, 'square', 0.045, 0, 0.08 + i * 0.09)); A.metal(784, 0.7, 0.06, 0.45); break;
         case 'distant': A.thud(48, 0.5, 0.12); A.hiss(0.4, 0.05, 800, 100); break;
         case 'eliminated': A.thud(36, 1.4, 0.6); [262, 196, 147, 98].forEach((f, i) => A.tone(f, 0.4, 'sawtooth', 0.035, 0, i * 0.18)); A.metal(147, 1.4, 0.07, 0.4); break;
+        case 'drill': for (let i = 0; i < 4; i++) A.metal(140 + i * 25, 0.12, 0.05, i * 0.07); A.hiss(0.4, 0.18, 900, 200, 'bandpass', 0, 2); A.thud(60, 0.3, 0.2, 0.25); break;
+        case 'repair': A.metal(660, 0.15, 0.05); A.metal(880, 0.15, 0.04, 0.1); A.hiss(0.08, 0.1, 3000, 1500, 'bandpass', 0.05, 3); break;
         case 'start': A.thud(55, 0.8, 0.4); A.metal(262, 1.0, 0.06, 0.1); A.metal(392, 1.0, 0.05, 0.25); break;
         case 'type': A.hiss(0.02, 0.12, 5000, 2000, 'bandpass', 0, 3); break;
         case 'boost': A.tone(110, 0.7, 'sawtooth', 0.05, 440); A.hiss(0.6, 0.15, 400, 5000, 'bandpass', 0, 2); A.metal(880, 0.4, 0.04, 0.35); break;

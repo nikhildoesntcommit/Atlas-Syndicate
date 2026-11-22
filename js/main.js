@@ -1,43 +1,43 @@
-/* ATLAS SYNDICATE v5 — main.js
-   Boot, the fixed-step loop, render order, run lifecycle, autosave, URL parameters, the ?demo
-   attract mode (an AI plays your faction while a camera director follows the action), and the
+/* ATLAS SYNDICATE v6 — main.js
+   Boot, the fixed-step loop, render order (galaxy, system or planet view), run lifecycle, autosave,
+   URL parameters (?demo, ?seed=, ?code=, ?diff=, ?speed=, ?aidebug), the ?demo camera director and the
    hidden F9 presenter jump to 15:00. */
 (function (AS) {
   'use strict';
 
-  const U = AS.U, S = AS.S, G = AS.G, C = AS.CONFIG, D = AS.Draw, PAL = AS.PALETTE, Act = AS.Act, Sc = AS.Screens;
+  const U = AS.U, S = AS.S, G = AS.G, C = AS.CONFIG, D = AS.Draw, Act = AS.Act, Sc = AS.Screens;
   const Main = AS.Main = {};
   const DEMO_SEED = 4207;
 
   function resetClient(run) {
     G.sel = null; G.drag = null; G.pan = null; G.order = null; G.paused = false; G.speed = 1; G.acc = 0; G.overTimer = 0;
-    G.parts = []; G.floats = []; G.toast = null; G.notices = []; G.dice = {}; G.reported = false; G.saveT = 0; G.ff = null;
-    G.view = 'galaxy'; G.sysId = -1; G.forecast = null; G.fcT = 0;
+    G.parts = []; G.floats = []; G.toast = null; G.notices = []; G.dice = {}; G.reported = false; G.saveT = 0; G.ff = null; G.warnOpen = false;
+    G.view = 'galaxy'; G.sysId = -1; G.planet = -1; G.forecast = null; G.fcT = 0;
     AS.Spr.planets = {};
     G.disp.credits = run.factions[0].credits;
   }
 
   /* ---------- run lifecycle ---------- */
-  Main.newRun = function (seed, diff, corp) {
+  Main.newRun = function (seed, diff) {
     const run = S.createRun(seed, { diff });
     G.run = run; G.mode = 'play'; G.attract = null;
     Sc.close();
     resetClient(run);
     AS.Tutorial.st = null;
     G.fitView(run);
-    if (corp && AS.CORPS[corp]) { G.pendingCorp = corp; run.phase = 'home'; G.showToast('CLICK A FLASHING SYSTEM IN THE OUTER ARMS: YOUR HOME', 13); }
-    else Sc.open('corp');
+    run.phase = 'home';
+    G.showToast('CHOOSE YOUR HOME: ONE OF THE FLASHING SYSTEMS AT THE ARM TIPS', 13);
     AS.Sfx.play('start');
   };
   Main.chooseHome = function (id) {
     const run = G.run;
-    S.begin(run, id, G.pendingCorp);
+    S.begin(run, id);
     AS.Sfx.play('claim');
     const h = run.systems[run.factions[0].capital];
     G.focusOn(h.x, h.y, 2);
     G.sel = null;
     if (!AS.Store.get('tutorialDone', false)) AS.Tutorial.start();
-    G.showToast('HOME: ' + h.name + '  -  ' + AS.CORPS[run.factions[0].corp].name, 13);
+    G.showToast('HOME: ' + h.name, 13);
     Act.autosave();
   };
   Main.resume = function (info) {
@@ -68,10 +68,7 @@
     const run = G.attract ? G.demo : G.run;
     if (!run || run.over) return;
     if (run.t >= 899) { G.showToast('ALREADY PAST 15:00', 13); return; }
-    if (run.phase !== 'play') {
-      const offers = S.corpOffers(run.seed);
-      S.begin(run, S.homeCandidates(run)[0], G.pendingCorp || offers[0]);
-    }
+    if (run.phase !== 'play') S.begin(run, S.homeCandidates(run)[0]);
     AS.Tutorial.st = null;
     if (G.screen) Sc.close();
     G.ff = { run, target: 900 };
@@ -80,8 +77,7 @@
   };
   function updateFF() {
     const ff = G.ff;
-    const done = S.presenterJump(ff.run, ff.target, 24);
-    if (done) {
+    if (S.presenterJump(ff.run, ff.target, 24)) {
       G.ff = null;
       G.disp.credits = ff.run.factions[0].credits;
       G.parts = []; G.floats = []; G.dice = {};
@@ -91,44 +87,58 @@
     }
   }
 
-  /* ---------- ?demo attract mode ---------- */
+  /* ---------- ?demo: open in the galaxy on a battle, then cut into a busy planet ---------- */
   Main.startAttract = function (seed, speed, from) {
     const run = S.createRun(seed || DEMO_SEED, { diff: 'normal', slot0: 'balanced' });
-    S.begin(run, -1, null);
-    if (from > 0) S.presenterJump(run, from);   // AI plays the player slot already, so this just fast-forwards
+    S.begin(run, -1);
+    // skip ahead to the first real fight (so the audience sees a battle within seconds)
+    const target = from > 0 ? from : 0;
+    const t0 = Date.now();
+    while (!run.over && Date.now() - t0 < 4000) {
+      // prefer a fight between two factions; settle for any fight after 9:00
+      if (target ? run.t >= target : run.t > C.game.protect + 20 && run.battles.some(b => b.att.owner >= 0 && (run.systems[b.sys].owner >= 0 || run.t > 540) && b.att.n >= 10 && run.systems[b.sys].gar.n >= 10)) break;
+      if (!target && run.t > 900) break;
+      S.step(run, C.sim.step); run.fx.length = 0;
+    }
     G.demo = run;
-    G.attract = { speed: speed || 3, shotT: 0, focus: null, z: 1, endT: 0, sysT: 0 };
+    G.attract = { speed: speed || 2, shotT: 0, age: 0, z: 1, endT: 0, sysT: 0, didPlanet: false };
     G.mode = 'attract'; G.run = null;
     Sc.close();
     resetClient(run);
-    G.fitView(run);
+    const b = run.battles[0];
+    if (b) { const s = run.systems[b.sys]; G.focusOn(s.x, s.y, 2); G.snapCam(); G.attract.shotT = 9; }
+    else G.fitView(run);
   };
   Main.exitAttract = function () { G.attract = null; G.demo = null; Main.toMenu(false); };
   Main.attractClick = function () { G.showToast('DEMO - THE AI IS PLAYING YOUR FACTION. ESC FOR THE MENU', 13); };
-  /** Camera director: cut to battles (ours first), open our systems now and then, pull back to the galaxy. */
+  function busiestPlanet(run) {
+    let best = null, bv = -1;
+    for (const s of run.systems) if (s.owner === 0) { const fl = S.sysFlow(run, s); s.planets.forEach((p, i) => { const v = p.blds.reduce((a, b) => a + (fl.B[b.id].rate || 0) + 0.5, 0) + S.portsOf(s, i).length * 2; if (v > bv) { bv = v; best = [s.id, i]; } }); }
+    return best;
+  }
   function director(run, dt) {
     const A = G.attract;
-    A.shotT -= dt;
-    if (G.view === 'system') { A.sysT -= dt; if (A.sysT <= 0) { G.view = 'galaxy'; G.sysId = -1; A.shotT = 0; } return; }
+    A.age += dt; A.shotT -= dt;
+    if (G.view !== 'galaxy') { A.sysT -= dt; if (A.sysT <= 0) { G.view = 'galaxy'; G.sysId = -1; G.planet = -1; A.shotT = 0; } return; }
     if (A.shotT > 0) return;
+    // after the opening battle: a short cut into the busiest planet, then rotate
+    if (!A.didPlanet || Math.random() < 0.22) {
+      const bp = busiestPlanet(run);
+      if (bp) { G.view = 'planet'; G.sysId = bp[0]; G.planet = bp[1]; A.sysT = A.didPlanet ? 6 : 7; A.didPlanet = true; return; }
+    }
     const ours = run.battles.filter(b => b.att.owner === 0 || run.systems[b.sys].owner === 0);
     const big = run.battles.slice().sort((a, b) => (b.a0 + b.d0) - (a.a0 + a.d0));
     const roll = Math.random();
-    if (ours.length && roll < 0.75) { const s = run.systems[ours[0].sys]; G.focusOn(s.x, s.y, 2); A.shotT = 5; }
-    else if (big.length && roll < 0.55) { const s = run.systems[big[0].sys]; G.focusOn(s.x, s.y, 2); A.shotT = 4.5; }
-    else if (roll < 0.72) {
-      const own = S.ownSystems(run, 0);
-      if (own.length) { const s = own[Math.floor(Math.random() * own.length)]; G.view = 'system'; G.sysId = s.id; A.sysT = 5; A.shotT = 0; G.parts = G.parts.filter(p => p.view !== 'system'); }
-    } else if (roll < 0.86) {
-      const mass = run.warnings[0];
-      if (mass && run.systems[mass.sys]) { const s = run.systems[mass.sys]; G.focusOn(s.x, s.y, 2); A.shotT = 4; } else { G.fitView(run, true); A.shotT = 6; }
-    } else { G.fitView(run, true); A.shotT = 6; }
+    if (ours.length && roll < 0.6) { const s = run.systems[ours[0].sys]; G.focusOn(s.x, s.y, 2); A.shotT = 6; }
+    else if (big.length && roll < 0.75) { const s = run.systems[big[0].sys]; G.focusOn(s.x, s.y, 2); A.shotT = 5; }
+    else if (roll < 0.85) { const own = S.ownSystems(run, 0); if (own.length) { G.view = 'system'; G.sysId = own[Math.floor(Math.random() * own.length)].id; A.sysT = 5; } }
+    else { G.fitView(run, true); A.shotT = 6; }
   }
   function updateAttract(dt) {
     const run = G.demo, A = G.attract;
     if (run.over) {
       A.endT += dt;
-      if (A.endT > 2.5 && G.screen !== 'report') Sc.replace('report', { run });
+      if (A.endT > 2.5 && G.screen !== 'report') { G.view = 'galaxy'; Sc.replace('report', { run }); }
       if (A.endT > 14) Main.startAttract(run.seed === DEMO_SEED ? U.randomSeed() : DEMO_SEED, A.speed);
       return;
     }
@@ -148,6 +158,7 @@
     let intensity = run.t < C.game.protect ? 1 : 1.9, tension = 0;
     if (run.battles.some(b => run.systems[b.sys].owner === 0)) intensity = 4.3;
     else if (run.battles.some(b => b.att.owner === 0) || run.battleLog.some(b => (b.att === 0 || b.def === 0) && run.t - b.t < 40)) intensity = 3.1;
+    if (run.coalition) intensity = Math.max(intensity, 2.6);
     if (run.warnings.some(w => w.kind === 'mass' || w.kind === 'inc')) tension = 0.7;
     return [intensity, tension];
   }
@@ -157,7 +168,6 @@
     AS.FX.update(dt, live);
     AS.Input.update(dt);
     if (G.view === 'galaxy') G.updateCam(dt);
-    G.viewT += dt;
     if (G.toast) { G.toast.t -= dt; if (G.toast.t <= 0) G.toast = null; }
     let mus = [1.2, 0];
     if (G.mode === 'attract') { updateAttract(dt); mus = intensityFor(G.demo); }
@@ -169,16 +179,15 @@
       if (run.phase === 'play') mus = intensityFor(run);
       if (G.ff) updateFF();
       else if (run.over) { G.overTimer += dt; if (G.overTimer > 3) endRun(run); }
-      else if (!G.screen && !G.paused && run.phase === 'play') {
+      else if ((!G.screen || G.screen === 'shop') && !G.paused && run.phase === 'play') {
         G.acc += dt * G.urlSpeed * G.speed;
         let n = 0;
         while (G.acc >= C.sim.step && n < C.sim.maxStepsPerFrame) {
           S.step(run, C.sim.step);
           n++; G.acc -= C.sim.step;
           AS.FX.consume(run, true);
-          if (run.factions[0].drafts.length) { G.acc = 0; G.order = null; G.drag = null; Sc.open('draft'); break; }
           if (run.over) { G.acc = 0; break; }
-          if (G.view === 'system' && run.systems[G.sysId].owner !== 0) { G.view = 'galaxy'; G.showToast('SYSTEM LOST', 17); }
+          if (G.view !== 'galaxy' && run.systems[G.sysId].owner !== 0) { G.view = 'galaxy'; G.showToast('SYSTEM LOST', 17); }
         }
         if (n >= C.sim.maxStepsPerFrame) G.acc = 0;
         G.saveT += dt;
@@ -187,7 +196,7 @@
     } else if (G.mode === 'menu') {
       if (!G.demo || (G.demo.over && G.time > G.demoEndAt)) {
         const s = U.randomSeed();
-        G.demo = S.createRun(s, { slot0: 'balanced' }); S.begin(G.demo, -1, null); G.demoAcc = 0;
+        G.demo = S.createRun(s, { slot0: 'balanced' }); S.begin(G.demo, -1); G.demoAcc = 0;
       }
       if (G.demo.over) { if (G.demoEndAt < G.time) G.demoEndAt = G.time + 3; }
       else {
@@ -229,32 +238,38 @@
           AS.FX.drawFloats(ctx, 'galaxy');
           ctx.restore();
         }
+      } else if (G.view === 'system') {
+        ctx.save(); ctx.translate(sx, sy);
+        const s = run.systems[G.sysId];
+        const L = AS.SysView.draw(ctx, run, s, G.time, interactive);
+        ctx.restore();
+        AS.HUD.drawSysPanel(ctx, run, s, L);
       } else {
         ctx.save(); ctx.translate(sx, sy);
         const s = run.systems[G.sysId];
-        G.sysL = AS.SysView.draw(ctx, run, s, G.time, interactive);
-        AS.FX.drawFloats(ctx, 'system');
+        const L = AS.PlanetView.draw(ctx, run, s, G.planet, G.time, interactive);
+        AS.FX.drawFloats(ctx, 'screen');
         ctx.restore();
-        AS.HUD.drawSysPanel(ctx, run, s, G.sysL);
+        AS.HUD.drawPlanetPanel(ctx, run, s, G.planet, L);
       }
       if (!menu && run.phase === 'play') {
-        AS.HUD.drawTop(ctx, run, interactive || G.mode === 'attract' ? interactive : false);
+        AS.HUD.drawTop(ctx, run, interactive);
         const wy = AS.HUD.drawWarnings(ctx, run, interactive);
-        const ey = AS.HUD.drawEvent(ctx, run, G.HUD_H + 3);
+        const ey = AS.HUD.drawEvent(ctx, run, wy + 1);
         if (G.view === 'galaxy' && G.W >= 480) AS.HUD.drawRoster(ctx, run);
         AS.HUD.drawToast(ctx, Math.max(ey, G.HUD_H + 3) + 1);
         if (interactive && G.view === 'galaxy') { AS.HUD.drawSelPanel(ctx, run); AS.HUD.drawOrder(ctx, run); }
         AS.HUD.drawTicker(ctx, run);
         AS.HUD.drawNotices(ctx, dt);
         AS.Tutorial.draw(ctx);
-        void wy;
+        AS.Debug.draw(ctx, run);
         if (G.paused && !G.screen && G.mode === 'play') overlayText(ctx, 'PAUSED', 'SPACE OR 1X TO RESUME - ORDERS STILL WORK');
         if (G.ff) overlayText(ctx, 'FAST FORWARD >>', 'THE AI PLAYS YOUR SIDE UNTIL 15:00   ' + U.fmtTime(G.ff.run.t));
-        if (G.mode === 'attract' && Math.floor(G.time) % 4 < 3) D.text(ctx, 'DEMO - AI PLAYING', G.W - 6, G.mapBottom() - 9, 13, { align: 'right' });
+        if (G.mode === 'attract' && Math.floor(G.time) % 4 < 3) D.text(ctx, 'DEMO - AI PLAYING', G.W - 6, G.mapBottom() - 11, 13, { align: 'right', big: true });
       } else if (!menu) {
         AS.HUD.drawToast(ctx, G.HUD_H + 4);
-        D.rect(ctx, 0, 0, G.W, 13, 1);
-        D.text(ctx, run.phase === 'home' ? 'CHOOSE YOUR HOME SYSTEM: ONE OF THE FLASHING SYSTEMS IN THE OUTER ARMS' : 'ATLAS SYNDICATE  -  SEED ' + run.seed, 6, 4, 13);
+        D.rect(ctx, 0, 0, G.W, G.HUD_H - 2, 1);
+        D.text(ctx, run.phase === 'home' ? 'CHOOSE YOUR HOME: A FLASHING SYSTEM AT AN ARM TIP' : 'ATLAS SYNDICATE', 6, 5, 13, { big: true });
         if (run.phase === 'home') AS.Gal.drawOverlay(ctx, run, G.time, true);
       } else {
         const cw = Math.round(Math.max(118, Math.min(G.W * 0.27, 190)) * 2);
@@ -263,7 +278,7 @@
       }
     }
     if (G.flash > 0) { ctx.fillStyle = 'rgba(232,226,207,' + (G.flash * 0.7).toFixed(3) + ')'; ctx.fillRect(0, 0, G.W, G.H); }
-    Sc.draw(ctx, dt);
+    AS.Screens.draw(ctx, dt);
     G.drawTooltip(ctx, dt);
   }
   function overlayText(ctx, a, b) {
@@ -298,19 +313,24 @@
     G.layout();
     window.addEventListener('resize', G.layout);
     AS.Input.bind();
+    if (q.has && q.has('aidebug')) {
+      AS.Debug.on = true;
+      window.addEventListener('keydown', e => { if (e.key === 'd' || e.key === 'D') AS.Debug.on = !AS.Debug.on; });
+    }
     document.addEventListener('visibilitychange', () => { if (document.hidden) { Act.autosave(); if (G.mode === 'play' && !G.screen) G.paused = true; } });
     window.addEventListener('pagehide', () => Act.autosave());
     window.addEventListener('pointerdown', () => AS.Sfx.init(), { capture: true });
     window.addEventListener('keydown', () => AS.Sfx.init(), { capture: true });
+    G.oldSaveMsg = Act.discardOldSaves();
     G.saveInfo = Act.savedRun();
     const seed = parseInt(q.get('seed'), 10), code = q.get('code'), diff = q.get('diff');
     if (q.has && q.has('demo')) {
-      Main.startAttract(Number.isFinite(seed) && seed > 0 ? seed >>> 0 : DEMO_SEED, Number.isFinite(sp) ? sp : 3, U.clamp(parseInt(q.get('from'), 10) || 0, 0, 1700));
+      Main.startAttract(Number.isFinite(seed) && seed > 0 ? seed >>> 0 : DEMO_SEED, Number.isFinite(sp) ? sp : 2, U.clamp(parseInt(q.get('from'), 10) || 0, 0, 1700));
       G.urlSpeed = 1;
     } else {
       G.mode = 'menu';
       Sc.replace('title');
-      if (code && U.parseCode(code)) { const c = U.parseCode(code); Main.newRun(c.seed, c.diff, c.corp); }
+      if (code && U.parseCode(code)) { const c = U.parseCode(code); Main.newRun(c.seed, c.diff); }
       else if (Number.isFinite(seed) && seed > 0) Main.newRun(seed >>> 0, AS.DIFFICULTY[diff] ? diff : 'normal');
     }
     requestAnimationFrame(frame);

@@ -1,73 +1,129 @@
-# Verification (v5.0.0)
+# Verification (v6.0.0)
 
-Everything below was measured by `node tests/run-headless.js all --games 210 --seeds 40 --fuzz 30` and `node tests/browser-test.js`, on the shipped code. Numbers are reported as measured, including the targets that were missed.
+Everything below was measured on the committed code, using `node tests/run-headless.js <mode>` (Node, macOS) and `tests/browser-test.js` (headless Chromium). Missed targets are reported as missed.
 
-## 1. AI tournament: 210 full games of six AI factions
+## Summary
 
-Each game: 24-system galaxy from a fresh seed, five rival personalities plus the player's slot played by the same AI with the `balanced` personality at Normal skill. 70 seeds per difficulty (Easy, Normal, Hard). Difficulty applies to the five rivals only. Then the **same 210 games with leader pressure switched off** (A/B).
+| Target (from the v6 brief) | Result | |
+|---|---|---|
+| Coalition leader wins ≤ ~55% | 63% (78% with coalitions off) | **MISSED** |
+| Leader loses systems after reaching 35% in most games | 61% | met |
+| ≥ 50% of games end by elimination | 42% overall: Normal 57%, Hard 51%, Easy 19% | **MISSED overall** |
+| Every personality wins 10–30% | 7–31% (Raider 7%, Merchant 31%) | **MISSED (narrowly)** |
+| Average player wins ≥ 55% on Easy | 18% | **MISSED** |
+| Average player wins 25–40% on Normal | 3% | **MISSED** |
+| Average player wins 10–20% on Hard | 0% | **MISSED** |
+| Production matches what buildings claim (50 seeds) | 0 mismatches in 31,488 cycle checks | met |
+| No AI building idle > 3 min | 186 cases in 50 games (~3.7 of ~323 buildings per game) | **MISSED** |
+| Every resource is used | credits, alloy, fuel and food are all spent | met |
+| Fuzz, determinism, save/load incl. planet actions | 0 failures; replay and resume identical | met |
+| Browser test at 1366×768 and 1920×1080, zero console errors | 31/31 checks at both sizes | met |
 
-| Run | Games | Length mean / median (min) | In 20–30 min | Ended by timer | Wins %: your slot (AI) | Merchant | Turtle | Opportunist | Raider | Warlord |
-|---|---|---|---|---|---|---|---|---|---|---|
-| all | 210 | 27.2 / 30 | 94% | 52% | 35 | 23 | 15 | 12 | 10 | 5 |
-| easy | 70 | 26.6 / 30 | 90% | 57% | 47 | 7 | 23 | 13 | 9 | 1 |
-| normal | 70 | 27.4 / 30 | 96% | 50% | 39 | 27 | 6 | 16 | 10 | 3 |
-| hard | 70 | 27.6 / 30 | 96% | 50% | 19 | 34 | 16 | 9 | 13 | 10 |
-| leader pressure OFF | 210 | 26.9 / 30 | 91% | 53% | 40 | 27 | 7 | 7 | 13 | 6 |
+## 1. AI tournament: 210 full games of six AI factions (`tournament`)
 
-| Run | First attack, any (min) | First attack on player slot, mean / median (min) | Attacks on player warned ≥4 s ahead | …with a massing warning ≥8 s ahead | Games where someone reached 35% | That leader went on to win | Share of attacks aimed at the leader | Snowball unopposed* | Factions alive at end |
-|---|---|---|---|---|---|---|---|---|---|
-| all | 4.7 | 7.2 / 6.1 | 87% | 70% | 94% | 74% | 60% | 60% | 2.6 |
-| easy | 4.9 | 7.4 / 6.8 | 82% | 66% | 100% | 64% | 62% | 37% | 2.41 |
-| normal | 4.6 | 7.5 / 6.1 | 89% | 70% | 93% | 74% | 57% | 79% | 2.51 |
-| hard | 4.5 | 6.5 / 5.4 | 91% | 76% | 89% | 85% | 59% | 64% | 2.89 |
-| leader pressure OFF | 4.7 | 7.2 / 6 | 88% | 72% | 95% | 80% | 56% | 63% | 2.42 |
+70 games each on Easy, Normal and Hard. In the tournament all six seats play at the game's difficulty. (In the real game seat 0 is the human; when the AI borrows it for F9 or `?demo`, it plays at Normal.) Then the same 210 games run again with coalitions switched off, as an A/B comparison.
 
-\* Snowball unopposed = the winner never lost a single system after first reaching 35% of the galaxy.
+| | All | Easy | Normal | Hard | Coalitions OFF |
+|---|---|---|---|---|---|
+| Ended by elimination | 42% | 19% | 57% | 51% | 57% |
+| Mean length (min) | 28.3 | 29.5 | 27.6 | 27.7 | 27.3 |
+| A faction reached 35% | 100% | 99% | 100% | 100% | 99% |
+| …and that leader won | **63%** | 48% | 67% | 74% | **78%** |
+| …and lost systems afterwards | **61%** | 87% | 57% | 39% | 61% |
+| Coalitions / coalition strikes per game | 2.2 / 4.4 | 2.5 / 6.7 | 1.9 / 3.9 | 2.2 / 2.6 | 0 / 0 |
+| Survivors at the end | 2.5 | 3.1 | 2.0 | 2.3 | 1.8 |
+| First attack (min) | 4.7 | 5.2 | 4.5 | 4.3 | 4.7 |
+| Attacks on seat 0 that were warned first | 86% | 86% | 85% | 88% | 87% |
 
-**Against the targets**
-- Game length 20–30 min: **met** (94% of games; mean 27.2 min).
-- No personality above ~30%: **met for the five rival personalities** (highest: Merchant 23% overall, 34% on Hard). **Missed for the AI in the player's slot**: 35% overall, 39% on Normal. Most of its Easy share (47%) is by design (Easy weakens only the rivals). On Normal the edge looks structural: slot 0 picks its home first and the rivals then spread out from it. Adjusting its weights did not fix it (a weaker variant scored 39%), so it is reported, not hidden.
-- First real attack on the player by minute 6–8: **met on average** (mean 7.2 min, median 6.1 min; Hard is earlier, median 5.4).
-- Readable intent: 87% of attacks on the player's side were preceded by a warning at least 4 s ahead; 70% by a "forces gathering" warning at least 8 s ahead.
-- Leader pressure **works, modestly**: with it, attacks aimed at a 35% leader rise from 56% to 60%, that leader wins 74% instead of 80%, and more factions survive to the end (2.6 vs 2.42). The "snowball unopposed" rate is about the same (60% vs 63%).
-- Performance: about 171 ms of CPU per full 30-minute game for all six AIs together; each faction thinks on its own staggered timer (every 2.5–9 s), so no frame does more than one or two thinks.
+Wins by personality (all 210 games): Balanced 19%, Warlord 10%, Merchant 31%, Turtle 21%, Opportunist 13%, Raider 7%. By difficulty: on Easy the Turtle wins 40%, because slow rivals rarely crack its chokepoints. On Hard the Merchant wins 41%.
 
-## 2. Player slot: scripted average player (`tests/average-player.js`)
+**What the coalition A/B shows:** coalitions cut the leader's win rate from 78% to 63%, add about 0.6 survivors per game and make games a minute longer. They work, but not enough to reach the ≤55% target. A coalition also ends when fewer than three factions are left, so once a leader has eliminated enough rivals, it usually can't be stopped.
 
-A deliberately simple rule-based player (not the game AI): builds ORE+ENERGY then FOOD chains, keeps salaries near half of income, reacts to warnings, attacks the easiest neighbour at ≥70% odds (rival capitals at ≥60%), buys a neighbour or warships when rich. One decision every 5 s. 40 seeds per difficulty.
+## 2. Player slot: scripted average player (`player`, `tests/average-player.js`)
 
-| Difficulty | Survived past 10:00 | Won | Top two | Eliminated | Systems at end (mean) | First attack on it (median) | Attacks warned |
-|---|---|---|---|---|---|---|---|
-| Easy | 100% | 23% | 60% | 18% | 6.8 | 7.5 min | 84% |
-| Normal | 100% | 18% | 43% | 30% | 4.6 | 7.9 min | 92% |
-| Hard | 98% | 23% | 40% | 40% | 3.9 | 9.1 min | 92% |
+The average player is a deliberately simple script, not the game AI. It:
 
-**Against the targets**: survives past minute 10 on Normal in most seeds — **met** (100%); loses sometimes — **met** (eliminated in 30%, loses 83%). On Easy it should usually win — **missed**: it wins 23% and finishes in the top two in 60%. The difficulty curve is visible in elimination rates (18% → 30% → 40%) and systems held, but the win rate is flat because a winner on any difficulty is whichever faction takes rival capitals, and the simple bot rarely does.
+- builds the tutorial's chains (metal, gold, ice, fuel), plus more of whatever the top bar shows running short
+- buys a free neighbour when it can afford one
+- attacks only at the odds the order panel shows: 70% for independent systems, 78% for rivals, 60% for a capital
+- reacts to warnings
+- spends spare alloy on platforms and warships
 
-## 3. Fuzz test
+It played 40 games per difficulty.
 
-30 full games driven by random (often invalid) player actions — 29,862 actions, 251,243 simulation steps, 82 mid-game save/load round trips. Every 50 steps: a scan for NaN/Infinity anywhere in the state and 1 invariant checker (owners, garrisons, freighter assignment, line stops, durability ranges, battle links, army paths, capitals). **Failures: 0.**
+| | Won | Top two | Eliminated | Survived past 10:00 | Systems at end | Attacks warned |
+|---|---|---|---|---|---|---|
+| Easy | **18%** | 38% | 53% | 98% | 4.2 | 84% |
+| Normal | **3%** | 13% | 80% | 100% | 0.7 | 86% |
+| Hard | **0%** | 10% | 93% | 100% | 0.1 | 86% |
 
-## 4. Determinism
+All three targets are missed. The scripted player is much weaker than the AI at the planet economy: by 10:00 it has built roughly a third as many buildings. For comparison, in an earlier run of the same tournament, an AI-quality player (the Balanced AI in seat 0 at Normal, against five Easy rivals) won 70% of Easy games. So a good economy can beat Easy, but this script can't yet. No human has played v6.
 
-Three seeds (Easy, Normal, Hard): the average player's recorded action log replayed into a fresh game reproduces the final state hash exactly; a game saved at 10:00, reloaded from JSON and continued matches an uninterrupted game exactly. **All passed.**
+## 3. Economy sanity (`economy`): 50 seeds, all-AI games to 20:00
 
-## 5. F9 presenter jump
+- **Claims match production.** At every cycle payout, the test compared the alloy, fuel and food each faction received with what its buildings' panels claimed one tick earlier. The claims come from `S.sysFlow`, the same function the planet view, the AI and the forecast use. Credits were compared with the levy included. **0 mismatches in 31,488 checks.** 516 ticks were skipped because something was built, broken or captured, or an event began, inside that exact tick (the claim was out of date, not wrong).
+- **Idle buildings.** Over 50 games, there were 186 cases of an AI building staying idle or blocked for more than 3 minutes. Captured systems are excluded for their first 3 minutes. That is about 3.7 per game, out of about 323 buildings. The usual causes are an extractor whose processor is full with no free slot, or a processor whose deposit ran dry. The AI now handles both:
+  - it builds chains whole or not at all
+  - it reconnects extractors to processors with room, or adds a second processor
+  - it drills or clears extractors that have no drill
+  - it clears anything stuck for more than 2–2.5 minutes
 
-20 seeds: F9 hands the player's slot to the AI until 15:00. 19/20 landed in a playable mid-war state (player alive with 2+ systems, 3+ factions alive).
+  On Normal, though, it takes only two economy steps per think, so some fixes wait. Target **missed**.
+- **Every resource is used.** Average per game, made / spent: credits 88,670 / 102,657 (spending includes levies), alloy 10,191 / 9,785, fuel 4,828 / 2,601, food 8,150 / 6,839.
 
-## 6. Browser test (`tests/browser-test.js`, headless Chromium at 1920×1080)
+## 4. Fuzz test (`fuzz`)
 
-Title → new game → corporation → home → the tutorial with real pointer clicks and drags (extractors, a line, freighters, food, recruiting) → back to the galaxy → a real drag onto a neighbour opens the order panel with odds → attack → battle → card draft (keyboard) → F9 to 15:00 → a massing warning → the end report. Then `?seed=12345`, `?demo` and `tests/selftest.html`. **21/21 checks passed, zero console errors.** It also writes the screenshots in this folder.
+30 full games of random actions from seat 0; half of them also have the scripted player. The random actions cover building in random slots, drilling random paths, conveyors and port links, pathways, demolishing, repairs, recruits, moves, buys, upgrades, ships and platforms. In total: 59,064 actions (7,790 accepted), 395,414 steps and 132 save/load round trips, with invariant and finite-number checks throughout. **0 failures.**
 
-## 7. Self-test
+## 5. Determinism (`replay`)
 
-27 rule checks (galaxy constraints over 60 seeds, chains, salaries, odds, protected period, capture, elimination, save/load, a short all-AI game). **All passed**, in Node and in the browser.
+Three seeds (Normal, Hard, Easy). Each plays a full game with the scripted player; a fresh run then replays only the recorded actions (126, 125 and 85 actions, including drills, conveyors and ports). Both runs end with an **identical state hash**. Separately, an all-AI game saved and resumed at 10:00 stays **identical** to the uninterrupted game through 15:00.
+
+## 6. F9 presenter jump (`f9`)
+
+16 of 20 jumps land in a playable mid-war state at 15:00: player alive with 2+ systems and 8+ buildings, and 3+ factions left. In the other 4, the AI playing your slot had been knocked down to one system.
+
+## 7. Browser test (`tests/browser-test.js`, headless Chromium, 1366×768 and 1920×1080)
+
+The run, in order:
+
+1. Title → new game → choose a home.
+2. **The whole tutorial with real pointer input:**
+   - click the system, then the home planet
+   - click a slot and the MINE button
+   - **drag a drill** cell by cell down to the metal deposit
+   - place a smelter and **drag a conveyor** to it, then wait for alloy
+   - the same for gold
+   - **drag a pathway** between two planets
+   - build an ice drill and **drag its conveyor into the port**
+   - build a water plant on the other planet, **fed from its port**
+   - recruit
+3. Drag onto a neighbour (order panel with odds and fuel) → attack → battle.
+4. Upgrade shop: buy an upgrade by clicking.
+5. F9 to 15:00, then play on until a coalition strikes the leader → end report.
+6. `?demo` (opens on a battle and cuts to a busy planet within 25 s), `?aidebug`, `?seed=12345` and `tests/selftest.html`.
+
+**31/31 checks passed at both sizes, with zero console errors.** The test saved the screenshots in this folder, including:
+
+- `planet-view.png`: the home planet with drills, conveyors, deposit amounts and its port
+- `ports-other-planet.png`: the linked planet receiving 2.1 ice per cycle through its port into a water plant
+- `ai-debug.png`: the `?aidebug` overlay
+- `coalition.png`: a coalition strike on the leader, with the truce and strike clock
+
+## 8. Self-test (`selftest`, and `tests/selftest.html` in a browser)
+
+26 rule checks, **all passed** in Node and in the browser:
+
+- **Galaxy:** galaxy shape and connectivity; equal distances between homes and to the core; identical home planets; every deposit reachable from a surface slot; deterministic generation.
+- **Planet:** one building per slot; drills must end in a matching deposit; drill cost matches the shown price; a blocked extractor reports its reason; conveyors only join matching resources; mine > smelter makes alloy.
+- **Flow and logistics:** the cycle pays what the buildings claim and depletes the deposit; opening a pathway; a port with nothing on the far side is blocked; ice travels through a pathway to a water plant; a broken processor stops the chain and reports why; repair costs credits and alloy.
+- **Upgrades and armies:** upgrade effects apply; moving an army costs fuel; no fuel, no move.
+- **Integrity:** invariants hold; save/load round trips are exact.
+- **AI:** coalition members can't attack each other; 6 minutes of all-AI play with no invariant or NaN failures; every AI builds a real planet economy.
 
 ## Not tested
 
-- Real touch devices and phone browsers (touch handling is shared with v4's pointer code, but no device was used).
-- Firefox and Safari (only headless Chromium).
-- Audio output (WebAudio runs, but nobody listened in a test).
-- Human playtests of v5: all balance numbers come from AI and scripted players.
-- The GitHub Pages deployment itself (the workflow was updated, not run).
+- Human playtests of v6: every balance number comes from AI and scripted players.
+- Real touch devices, phone browsers, Firefox and Safari (only headless Chromium was used).
+- Audio output: WebAudio runs, but nobody listened during a test.
+- The UI scale setting snaps to whole-pixel scales, so on some screens 125% and 150% look the same.

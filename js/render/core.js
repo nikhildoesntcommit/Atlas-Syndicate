@@ -1,4 +1,4 @@
-/* ATLAS SYNDICATE v5 — render/core.js
+/* ATLAS SYNDICATE v6 — render/core.js
    Client state (AS.G), the integer-scaled adaptive layout (from v4), the galaxy camera and
    immediate-mode UI primitives: riveted plates, hazard stripes, buttons, tooltips. */
 (function (AS) {
@@ -18,21 +18,28 @@
     settings: null, name: 'PLAYER', overTimer: 0, finale: null, ff: null, attract: null, notices: [],
   };
 
-  G.HUD_H = 15;
-  G.TICKER_H = 11;
+  G.HUD_H = 17;
+  G.TICKER_H = 13;
   G.bottomH = () => G.TICKER_H;
   G.mapBottom = () => G.H - G.bottomH();
 
   /* ---------- layout: pick the largest integer device-pixel scale that keeps the logical view >= the minimum ---------- */
+  /** UI scale: 100% is the whole-pixel scale that fits a 640x360 view on this screen; 125/150/200% use
+   *  bigger whole pixels (rounded to the nearest whole number: no smoothing, no uneven pixels). */
+  G.UI_SCALES = [100, 125, 150, 200];
+  G.defaultUiScale = function () {
+    const dh = Math.floor(globalThis.innerHeight * Math.max(1, globalThis.devicePixelRatio || 1));
+    return dh >= 1000 ? 125 : 100;
+  };
   G.layout = function () {
     if (!G.canvas) return;
     const dpr = G.dpr = Math.max(1, globalThis.devicePixelRatio || 1);
     const dw = Math.floor(globalThis.innerWidth * dpr), dh = Math.floor(globalThis.innerHeight * dpr);
-    const mins = C.view.scales[(G.settings && G.settings.uiScale) || 'medium'] || C.view.scales.medium;
-    let s = Math.max(1, Math.floor(Math.min(dw / mins[0], dh / mins[1])));
-    // never go below 480x270 logical
+    const pct = (G.settings && G.UI_SCALES.indexOf(G.settings.uiScale) >= 0 ? G.settings.uiScale : G.defaultUiScale()) / 100;
+    const s0 = Math.max(1, Math.floor(Math.min(dw / 640, dh / 360)));
+    let s = Math.max(1, Math.round(s0 * pct));
     while (s > 1 && (Math.floor(dw / s) < C.view.minW || Math.floor(dh / s) < C.view.minH)) s--;
-    G.scale = s;
+    G.scale = s; G.scaleBase = s0;
     G.W = Math.max(C.view.minW, Math.floor(dw / s));
     G.H = Math.max(C.view.minH, Math.floor(dh / s));
     if (G.canvas.width !== G.W || G.canvas.height !== G.H) { G.canvas.width = G.W; G.canvas.height = G.H; }
@@ -175,8 +182,9 @@
     D.frame(ctx, x, y + dy, w, h, fill, 0);
     if (!pr) { ctx.fillStyle = PAL[opt.active ? 12 : opt.primary ? 14 : hov ? 5 : 4]; ctx.fillRect(x + 1, y + 1, w - 2, 1); }
     const tc = opt.disabled ? 4 : opt.primary ? 0 : opt.active ? 31 : (opt.col || 7);
-    const fh = opt.big ? 7 : 5;
-    D.text(ctx, label, x + w / 2, y + dy + Math.floor((h - fh) / 2) + (pr ? 0 : 0), tc, { align: 'center', shadow: !opt.primary && !opt.disabled, big: opt.big });
+    const big = opt.big !== undefined ? opt.big : h >= 12;
+    const fh = big ? 7 : 5;
+    if (!opt.noText) D.text(ctx, label, x + w / 2, y + dy + Math.floor((h - fh) / 2) + (pr ? 0 : 0), tc, { align: 'center', shadow: !opt.primary && !opt.disabled, big });
     G.btns.push({ x, y, w, h, fn: opt.disabled ? (opt.onDisabled || (() => AS.Sfx && AS.Sfx.play('err'))) : fn, press: !opt.disabled, label: String(label) });
     if (opt.tip) G.tip(x, y, w, h, opt.tip);
   };
@@ -196,17 +204,17 @@
     if (reg.text !== G.tipHover.text) G.tipHover = { text: reg.text, t: 0 };
     G.tipHover.t += dt;
     if (G.tipHover.t < C.camera.tipDelay) return;
-    const lines = U.wrapText(reg.text, 36);
-    const w = Math.max(...lines.map(l => D.tw(l))) + 9, h = lines.length * 7 + 6;
+    const lines = U.wrapText(reg.text, Math.min(44, Math.floor((G.W - 40) / 6)));
+    const w = Math.max(...lines.map(l => D.tw(l, true))) + 10, h = lines.length * 10 + 6;
     let x = Math.round(G.mouse.x + 9), y = Math.round(G.mouse.y + 10);
     if (x + w > G.W - 2) x = Math.round(G.mouse.x - w - 5);
     if (y + h > G.H - 2) y = Math.round(G.mouse.y - h - 5);
     x = U.clamp(x, 2, G.W - w - 2); y = U.clamp(y, 2, G.H - h - 2);
     D.frame(ctx, x, y, w, h, 1, 12);
     ctx.fillStyle = PAL[12]; ctx.fillRect(x + 1, y + 1, 2, h - 2);
-    lines.forEach((l, i) => D.text(ctx, l, x + 5, y + 3 + i * 7, 31, { shadow: false }));
+    lines.forEach((l, i) => D.text(ctx, l, x + 6, y + 4 + i * 10, 31, { shadow: false, big: true }));
   };
 
   G.toast = null;
-  G.showToast = function (text, col) { G.toast = { text: String(text).toUpperCase(), col: col === undefined ? 18 : col, t: 2.6 }; };
+  G.showToast = function (text, col) { G.toast = { text: String(text).toUpperCase(), col: col === undefined ? 18 : col, t: 2.8 }; };
 })(globalThis.AS = globalThis.AS || {});

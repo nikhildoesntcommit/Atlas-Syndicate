@@ -1,4 +1,4 @@
-/* ATLAS SYNDICATE v5 — render/font.js (unchanged from v4)
+/* ATLAS SYNDICATE v6 — render/font.js (unchanged from v4)
    Two pixel fonts drawn from code: a 3x5 body font (from v3) and a 5x7 heading font.
    Glyphs are baked once per colour into atlas canvases. */
 (function (AS) {

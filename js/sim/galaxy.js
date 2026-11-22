@@ -1,144 +1,63 @@
-/* ATLAS SYNDICATE v5 — sim/galaxy.js
-   Seeded galaxy generation: a stylised five-armed spiral of 24 star systems joined by hyperlanes,
-   each system with 3-6 planets. Plus graph helpers (neighbours, distances, paths). */
+/* ATLAS SYNDICATE v6 — sim/galaxy.js
+   Seeded galaxy: a stylised six-armed spiral of 24 star systems (six core systems, six arms of three).
+   The lanes are laid out with rotational symmetry, so every home (an arm tip) is exactly as far from its
+   nearest rivals and from the core as every other home: no start is better than another.
+   Each system holds 3-6 planets with their own underground (sim/planet.js). Plus graph helpers. */
 (function (AS) {
   'use strict';
 
   const U = AS.U, C = AS.CONFIG;
   const S = AS.S = AS.S || {};
 
-  function segCross(a, b, c, d) {
-    const o = (p, q, r) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x));
-    if (a === c || a === d || b === c || b === d) return false;
-    return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b);
-  }
-
-  /** Planet set for a system. Richer and more numerous in the core, poorer at the arm tips. */
-  function makePlanets(rng, region, k) {
-    const count = region === 'core' ? 5 + (rng() < 0.5 ? 1 : 0) : [4 + (rng() < 0.5 ? 1 : 0), 4 + (rng() < 0.4 ? 1 : 0), 3 + Math.floor(rng() * 3), 3 + (rng() < 0.4 ? 1 : 0)][k];
-    const richW = region === 'core' ? [[2, 0.45], [3, 0.55]] : [[[1, 0.3], [2, 0.5], [3, 0.2]], [[1, 0.45], [2, 0.45], [3, 0.1]], [[1, 0.55], [2, 0.45]], [[1, 0.7], [2, 0.3]]][k];
-    const types = ['ore', 'energy', rng() < 0.85 ? 'food' : (rng() < 0.5 ? 'ore' : 'energy')];
-    while (types.length < count) types.push(U.pickWeighted(rng, [['ore', 0.36], ['energy', 0.34], ['food', 0.3]]));
-    U.shuffle(rng, types);
-    return types.map((type, i) => makePlanet(rng, type, U.pickWeighted(rng, richW), i, count));
-  }
-  function makePlanet(rng, type, rich, i, count) {
-    const kinds = AS.RES[type].kinds;
-    const kind = kinds[Math.floor(rng() * kinds.length)];
-    return {
-      type, rich, kind, orbit: (i + 1) / count, phase: rng() * U.TAU, period: 240 + rng() * 260,
-      size: kind === 'gas' ? 9 + Math.floor(rng() * 3) : 5 + Math.floor(rng() * 3) + rich, spin: 0.25 + rng() * 0.5, ext: null,
-    };
-  }
-  S.makePlanet = makePlanet;
-
-  /** Every home is identical, so no faction starts with a better economy. */
-  S.HOME_PLANETS = [['ore', 2], ['energy', 2], ['food', 2], ['energy', 1], ['ore', 1]];
-
   S.newSystem = function (id, name, x, y, region, arm, k) {
     return {
       id, name, x, y, region, arm, k, lanes: [], owner: -1, capital: -1,
       gar: { n: 0, vet: 0, ships: 0, sdur: 100 }, plat: { n: 0, dur: 100 }, train: { q: 0, prog: 0 },
-      planets: [], station: { dur: 100 }, lines: [], nextLine: 1, freighters: 0, fdur: 100,
-      pop: 0, battle: 0, lastBattle: -999, lastLost: -999, lastCaptured: -999, captureCount: 0,
-      lastYield: null, raidedAt: -999,
+      planets: [], pathways: [], pop: 0, battle: 0, lastBattle: -999, lastLost: -999, lastCaptured: -999, captureCount: 0, raidedAt: -999, flow: null,
     };
   };
 
-  /** Generate the galaxy into run.systems / run.lanes. Deterministic for a seed. */
   S.genGalaxy = function (run) {
     const rng = U.rng((run.seed ^ 0x9e3779b9) >>> 0);
-    const G = C.galaxy;
+    const G = C.galaxy, A = G.arms, step = U.TAU / A;
     const names = U.shuffle(rng, AS.SYSTEM_NAMES.slice());
     const systems = [];
-    const rot = rng() * U.TAU, rot2 = rng() * U.TAU;
+    const rot = rng() * U.TAU;
+    const jit = () => (rng() - 0.5) * 7;
     for (let j = 0; j < G.core; j++) {
-      const a = rot2 + j * U.TAU / G.core + (rng() - 0.5) * 0.3, r = G.coreR + (rng() - 0.5) * 10;
-      systems.push(S.newSystem(systems.length, names[systems.length], Math.cos(a) * r * 1.25, Math.sin(a) * r * 0.8, 'core', -1, -1));
+      const a = rot + (j + 0.5) * step;
+      systems.push(S.newSystem(systems.length, names[systems.length], Math.cos(a) * G.coreR * 1.3 + jit() * 0.5, Math.sin(a) * G.coreR * 0.8 + jit() * 0.4, 'core', -1, -1));
     }
-    for (let i = 0; i < G.arms; i++) {
-      const base = rot + i * U.TAU / G.arms;
-      for (let k = 0; k < G.perArm; k++) {
-        const r = G.armR0 + k * G.armDR + (rng() - 0.5) * 10, a = base + k * G.twist + (rng() - 0.5) * 0.16;
-        systems.push(S.newSystem(systems.length, names[systems.length], Math.cos(a) * r, Math.sin(a) * r * G.squash, 'arm', i, k));
-      }
+    for (let i = 0; i < A; i++) for (let k = 0; k < G.perArm; k++) {
+      const r = G.armR0 + k * G.armDR, a = rot + i * step + k * G.twist;
+      systems.push(S.newSystem(systems.length, names[systems.length], Math.cos(a) * r + jit(), Math.sin(a) * r * G.squash + jit() * 0.6, 'arm', i, k));
     }
-    const armSys = (i, k) => systems[G.core + i * G.perArm + k];
+    const arm = (i, k) => systems[G.core + ((i % A) + A) % A * G.perArm + k];
+    const core = j => systems[((j % G.core) + G.core) % G.core];
     const lanes = [];
-    const has = (a, b) => lanes.some(l => (l.a === a && l.b === b) || (l.a === b && l.b === a));
-    const deg = id => lanes.reduce((n, l) => n + (l.a === id || l.b === id ? 1 : 0), 0);
-    const ok = (a, b) => {
-      if (a === b || has(a, b)) return false;
-      const A = systems[a], B = systems[b];
-      for (const l of lanes) if (segCross(A, B, systems[l.a], systems[l.b])) return false;
-      for (const s of systems) if (s !== A && s !== B && U.distToSeg(s.x, s.y, A.x, A.y, B.x, B.y) < 11) return false;
-      return true;
-    };
-    const add = (a, b, force) => { if (force ? (a !== b && !has(a, b)) : ok(a, b)) { lanes.push({ a, b, closedUntil: 0 }); return true; } return false; };
-    // core ring (+ maybe a diagonal)
-    for (let j = 0; j < G.core; j++) add(j, (j + 1) % G.core, true);
-    if (rng() < 0.5) add(0, 2); else add(1, 3);
-    // arm chains and their roots into the core
-    for (let i = 0; i < G.arms; i++) {
-      for (let k = 0; k < G.perArm - 1; k++) add(armSys(i, k).id, armSys(i, k + 1).id, true);
-      const root = armSys(i, 0);
-      const cores = systems.slice(0, G.core).sort((p, q) => Math.hypot(p.x - root.x, p.y - root.y) - Math.hypot(q.x - root.x, q.y - root.y));
-      if (!add(root.id, cores[0].id)) add(root.id, cores[0].id, true);
-    }
-    // cross-arm lanes between neighbouring arms (these, and the roots, make the chokepoints)
-    for (let i = 0; i < G.arms; i++) {
-      const j = (i + 1) % G.arms, cand = [];
-      for (let k = 1; k < G.perArm; k++) for (let kk = 0; kk < G.perArm; kk++) {
-        const A = armSys(i, k), B = armSys(j, kk);
-        cand.push([A.id, B.id, Math.hypot(A.x - B.x, A.y - B.y), k]);
-      }
-      cand.sort((p, q) => p[2] - q[2]);
-      let first = null;
-      for (const c of cand) if (add(c[0], c[1])) { first = c; break; }
-      if (first && rng() < 0.45) for (const c of cand) if (Math.abs(c[3] - first[3]) >= 2 && add(c[0], c[1])) break;
-    }
-    // every system needs 2-4 lanes
-    for (const s of systems) {
-      if (deg(s.id) >= 2) continue;
-      const near = systems.filter(o => o !== s && deg(o.id) < 4).sort((p, q) => Math.hypot(p.x - s.x, p.y - s.y) - Math.hypot(q.x - s.x, q.y - s.y));
-      for (const o of near) if (add(s.id, o.id)) break;
-      if (deg(s.id) < 2) for (const o of near) if (add(s.id, o.id, true)) break;
-    }
-    // trim over-connected systems where it keeps the galaxy connected
-    for (const s of systems) {
-      while (deg(s.id) > 4) {
-        const mine = lanes.filter(l => l.a === s.id || l.b === s.id).sort((p, q) => deg(q.a === s.id ? q.b : q.a) - deg(p.a === s.id ? p.b : p.a));
-        let removed = false;
-        for (const l of mine) {
-          const other = l.a === s.id ? l.b : l.a;
-          if (deg(other) <= 2) continue;
-          const idx = lanes.indexOf(l);
-          lanes.splice(idx, 1);
-          if (connected(systems.length, lanes)) { removed = true; break; }
-          lanes.splice(idx, 0, l);
-        }
-        if (!removed) break;
-      }
+    const add = (a, b) => lanes.push({ a: a.id, b: b.id, closedUntil: 0 });
+    for (let j = 0; j < G.core; j++) add(core(j), core(j + 1));
+    for (let i = 0; i < A; i++) {
+      add(arm(i, 0), core(i - 1)); add(arm(i, 0), core(i));      // each arm meets the core at two systems
+      add(arm(i, 0), arm(i, 1)); add(arm(i, 1), arm(i, 2));
+      add(arm(i, 2), arm(i + 1, 1));                              // each tip reaches the next arm: the frontier
     }
     lanes.forEach((l, i) => {
-      const A = systems[l.a], B = systems[l.b];
-      l.id = i; l.len = Math.hypot(A.x - B.x, A.y - B.y);
-      A.lanes.push(i); B.lanes.push(i);
+      const a = systems[l.a], b = systems[l.b];
+      l.id = i; l.len = Math.hypot(a.x - b.x, a.y - b.y);
+      a.lanes.push(i); b.lanes.push(i);
     });
-    // planets, neutral garrisons and pre-built independent infrastructure
+    // planets, neutral garrisons
     for (const s of systems) {
-      s.planets = makePlanets(rng, s.region, s.k);
-      const N = C.neutral, band = s.region === 'core' ? N.core : N.arm[s.k];
+      const count = s.region === 'core' ? 5 + (rng() < 0.5 ? 1 : 0) : s.k === 0 ? 4 + (rng() < 0.5 ? 1 : 0) : 4;
+      s.planets = [];
+      for (let i = 0; i < count; i++) s.planets.push(S.makePlanet(rng, i, count, s.region === 'core'));
+      U.shuffle(rng, s.planets);
+      const a0 = rng() * U.TAU;
+      s.planets.forEach((p, i) => { p.orbit = (i + 1) / count; p.phase = a0 + i * 2.4; p.name = s.name + ' ' + AS.PLANET_SUFFIX[i]; });   // golden-angle spacing: planets never start bunched
+      const N = C.neutral, band = s.region === 'core' ? N.core : N.arm[Math.min(s.k, N.arm.length - 1)];
       s.gar.n = Math.round(band[0] + rng() * (band[1] - band[0]));
       s.gar.vet = N.vet;
-      s.station.dur = Math.round(70 + rng() * 30);
-      s.freighters = 2; s.fdur = Math.round(60 + rng() * 30);
-      const ore = s.planets.findIndex(p => p.type === 'ore'), en = s.planets.findIndex(p => p.type === 'energy');
-      const built = [ore, en].filter(i => i >= 0);
-      if (rng() < 0.5) { const f = s.planets.findIndex(p => p.type === 'food'); if (f >= 0) built.push(f); }
-      for (const i of built) s.planets[i].ext = { dur: Math.round(55 + rng() * 35) };
-      if (built.length) s.lines.push({ id: s.nextLine++, stops: [-1].concat(built.slice(0, 2)), fr: 2, dur: Math.round(60 + rng() * 30) });
-      s.pop = s.region === 'core' ? 10 : 6;
     }
     run.systems = systems;
     run.lanes = lanes;
@@ -191,6 +110,7 @@
     return d;
   };
   /** Path of system ids from a to b, walking only through systems owned by `owner` (the last hop may be anything).
+   *  During a coalition truce, members may also pass through each other's systems (pooling toward the leader).
    *  Closed lanes are avoided. Returns null if there is no such path. */
   S.path = function (run, a, b, owner) {
     if (a === b) return null;
@@ -199,7 +119,7 @@
     const q = [a];
     for (let i = 0; i < q.length; i++) {
       const v = q[i];
-      if (v !== a && run.systems[v].owner !== owner) continue;   // can only pass through own systems
+      if (v !== a && run.systems[v].owner !== owner && !(S.truceBlocks && run.systems[v].owner >= 0 && S.truceBlocks(run, owner, run.systems[v].owner))) continue;   // own systems (or truce partners)
       for (const li of run.systems[v].lanes) {
         const l = run.lanes[li];
         if (!S.laneOpen(run, l)) continue;
@@ -212,5 +132,5 @@
     }
     return null;
   };
-  S.homeCandidates = run => run.systems.filter(s => s.region === 'arm' && s.k >= 2).map(s => s.id);
+  S.homeCandidates = run => run.systems.filter(s => s.region === 'arm' && s.k === C.galaxy.perArm - 1).map(s => s.id);
 })(globalThis.AS = globalThis.AS || {});

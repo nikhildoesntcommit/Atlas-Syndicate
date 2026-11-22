@@ -1,4 +1,4 @@
-/* ATLAS SYNDICATE v5 — render/galaxy.js
+/* ATLAS SYNDICATE v6 — render/galaxy.js
    The galaxy view (Risk): a dithered spiral backdrop, hyperlanes, star systems with owner colour,
    army strength as a number, status icons, armies flowing along lanes as pixel streams, battle dice,
    and the particles shared with the system view. Fog: exact numbers only where the player can see. */
@@ -125,7 +125,7 @@
   };
   Gal.damaged = function (run, s) {
     if (s.owner < 0) return false;
-    for (const b of S.buildings(run, s)) if (b.dur < 30 && (b.kind !== 'ships' && b.kind !== 'plat')) return true;
+    for (const r of S.repairList(run, s)) if (r.dur < 30 && r.kind !== 'ships' && r.kind !== 'plat') return true;
     return false;
   };
 
@@ -222,6 +222,11 @@
       const w = Math.max(9, D.tw(txt) + 10), px = x - Math.floor(w / 2), py = y - 13;
       const sel = G.sel && G.sel.sys === s.id;
       const hov = interactive && G.hoverSys === s.id;
+      if (run.coalition && own === run.coalition.target) {   // the coalition's target pulses red
+        const r = 11 + Math.floor(time * 3) % 3;
+        for (let i = 0; i < 20; i++) { const a = i / 20 * TAU; D.rect(ctx, Math.round(x + Math.cos(a) * r), Math.round(y - 2 + Math.sin(a) * r * 0.75), 1, 1, i % 2 ? 17 : 0); }
+        if (s.capital === own) T(ctx, 'COALITION TARGET', x, py - 9, 17, { align: 'center' });
+      }
       if (!homePick || own >= 0) {
         D.rect(ctx, px, py + 1, w, 9, 0);
         D.frame(ctx, px, py, w, 9, fd, sel ? 31 : hov ? 14 : fc);
@@ -288,6 +293,7 @@
     let t = s.name + ': ' + (o ? o.name + (o.id === 0 ? '' : ' (' + AS.PERS_NAMES[o.pers] + ')') : 'INDEPENDENT') + '. ';
     t += k.exact ? 'DEFENCE ' + k.v + '. ' : 'SIZE BAND ' + k.text + ' (S UNDER 15, M UNDER 40, L 40+): TOO FAR TO SEE EXACT NUMBERS. ';
     if (s.capital >= 0 && s.capital === s.owner) t += 'CAPITAL: TAKE IT TO ELIMINATE THEM. ';
+    if (run.coalition && s.owner === run.coalition.target) t += 'COALITION TARGET. ';
     if (s.owner === 0) t += 'CLICK TO OPEN. DRAG TO A NEIGHBOUR TO MOVE OR ATTACK.';
     else t += 'CLICK FOR DETAILS.';
     return t;

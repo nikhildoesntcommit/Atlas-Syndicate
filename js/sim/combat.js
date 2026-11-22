@@ -1,4 +1,4 @@
-/* ATLAS SYNDICATE v5 — sim/combat.js
+/* ATLAS SYNDICATE v6 — sim/combat.js
    Armies move only along hyperlanes. Arriving at a hostile system starts a battle that resolves over a
    few seconds in visible dice rounds. Odds are estimated with the same battle model, so the "68% to win"
    the player sees is the number the AI uses too. Capture, raids, retreats and elimination live here. */
@@ -6,32 +6,34 @@
   'use strict';
 
   const U = AS.U, C = AS.CONFIG, S = AS.S, K = C.combat;
+  let BASE = null;
+  S.initCombat = () => { BASE = S.baseMods(); };
 
   /* ---------- strength ---------- */
-  S.soldierPower = (vet, m) => 1 + U.clamp(vet, 0, 1) * m.vetBonus;
-  S.shipPower = m => C.equip.shipPower * m.shipPower;
+  S.soldierPower = (vet, m, f) => (1 + U.clamp(vet, 0, 1) * m.vetBonus) * (f && f.hungry ? C.army.hungerMult : 1);   // hungry soldiers fight at 75%
+  S.shipPower = (m, f) => (f && f.noFuel ? 0 : C.equip.shipPower * m.shipPower);                                        // no fuel: warships go dark
   /** Attacking strength of a stack (army or battle attacker). */
   S.stackStrength = function (run, st) {
-    const m = run.factions[st.owner].mods;
-    return (st.n * S.soldierPower(st.vet, m) + (st.sdur > 0 ? st.ships * S.shipPower(m) : 0)) * m.attack;
+    const f = run.factions[st.owner], m = f.mods;
+    return (st.n * S.soldierPower(st.vet, m, f) + (st.sdur > 0 ? st.ships * S.shipPower(m, f) : 0)) * m.attack;
   };
   /** Strength a system defends with: garrison, warships, platforms, militia, defender bonus, capital bonus. */
   S.defStrength = function (run, sys) {
     const own = sys.owner >= 0 ? run.factions[sys.owner] : null;
-    const m = own ? own.mods : S.baseMods();
+    const m = own ? own.mods : BASE;
     const g = sys.gar;
-    let st = g.n * S.soldierPower(g.vet, m) + (g.sdur > 0 ? g.ships * S.shipPower(m) : 0);
+    let st = g.n * S.soldierPower(g.vet, m, own) + (g.sdur > 0 ? g.ships * S.shipPower(m, own) : 0);
     if (sys.plat.n && sys.plat.dur > 0) st += sys.plat.n * C.equip.platformPower * m.platPower;
     st += sys.mil || 0;
     let mult = m.defBonus * m.def;
-    if (own && sys.capital === sys.owner) mult *= K.capitalBonus * m.capital;
+    if (own && sys.capital === sys.owner && run.t < C.game.endgame) mult *= K.capitalBonus * m.capital;   // from 18:00 capitals stand exposed
     return st * mult;
   };
   /** Garrison strength without the defender multipliers (what an army sent from here would be worth). */
   S.garStrength = function (run, sys) {
     if (sys.owner < 0) return S.defStrength(run, sys);
-    const m = run.factions[sys.owner].mods, g = sys.gar;
-    return g.n * S.soldierPower(g.vet, m) + (g.sdur > 0 ? g.ships * S.shipPower(m) : 0);
+    const f = run.factions[sys.owner], m = f.mods, g = sys.gar;
+    return g.n * S.soldierPower(g.vet, m, f) + (g.sdur > 0 ? g.ships * S.shipPower(m, f) : 0);
   };
   S.sizeBand = v => (v < 15 ? 'S' : v < 40 ? 'M' : 'L');
 
@@ -91,12 +93,17 @@
     if (from.battle) return { ok: false, reason: 'underattack' };
     const hostile = to.owner !== fid;
     if (hostile && run.t < C.game.protect) return { ok: false, reason: 'protected' };
+    if (hostile && to.owner >= 0 && S.truceBlocks(run, fid, to.owner)) return { ok: false, reason: 'truce' };
     const path = S.path(run, fromId, toId, fid);
     if (!path) return { ok: false, reason: 'nopath' };
     frac = U.clamp(U.fin(frac, 1), 0.05, 1);
-    const g = from.gar;
+    const g = from.gar, f = run.factions[fid];
     const n = frac >= 1 ? g.n : Math.round(g.n * frac), ships = frac >= 1 ? g.ships : Math.round(g.ships * frac);
     if (n + ships <= 0) return { ok: false, reason: 'empty' };
+    // fuel: every lane costs fuel, more for a bigger army
+    const fuel = S.armyFuel(run, f, n + ships * 5, path.length - 1);
+    if (f.fuel < fuel) return { ok: false, reason: 'nofuel', fuel };
+    f.fuel -= fuel; f.stats.fuelUsed += fuel;
     mode = hostile ? (mode === 'raid' ? 'raid' : 'attack') : 'move';
     g.n -= n; g.ships -= ships;
     const a = { id: run.nextId++, owner: fid, n, vet: g.vet, ships, sdur: g.sdur, path, seg: 0, prog: 0, mode, origin: path[path.length - 2], dest: toId, wait: 0, born: run.t };
@@ -118,7 +125,8 @@
       if (a.prog < 1) continue;
       a.prog = 1;
       const node = run.systems[to];
-      if (a.seg + 1 < a.path.length - 1 && node.owner === a.owner && !node.battle) {
+      const partner = node.owner >= 0 && node.owner !== a.owner && S.truceBlocks(run, a.owner, node.owner);   // coalition partners let each other through
+      if (a.seg + 1 < a.path.length - 1 && ((node.owner === a.owner && !node.battle) || partner)) {
         const next = S.laneBetween(run, to, a.path[a.seg + 2]);
         if (S.laneOpen(run, next)) { a.seg++; a.prog = 0; continue; }
         a.dest = to;   // lane closed ahead: stop here
@@ -227,7 +235,7 @@
     const toDef = A * K.k * ra / 10.5, toAtt = D * K.k * rd / 10.5;
     // the defender multiplier boosts damage dealt, not hit points, so damage taken is split over raw strength
     const al = hurt(run, att, toAtt / am.attack, am, 'carry', att, null);
-    const dl = hurt(run, s.gar, toDef / Math.max(0.01, dm.defBonus * dm.def * (s.capital === s.owner && s.owner >= 0 ? K.capitalBonus * dm.capital : 1)), dm, 'defCarry', b, s);
+    const dl = hurt(run, s.gar, toDef / Math.max(0.01, dm.defBonus * dm.def * (s.capital === s.owner && s.owner >= 0 && run.t < C.game.endgame ? K.capitalBonus * dm.capital : 1)), dm, 'defCarry', b, s);
     S.damageBuildings(run, s, att.mode === 'raid' ? C.dur.raidDmg : C.dur.battleDmg, att.mode === 'raid');
     let loot = 0;
     if (att.mode === 'raid' && ra > rd) {
@@ -285,18 +293,18 @@
     if (df) { df.lastDefeat = run.t; df.stats.systemsLost++; }
     s.lastLost = run.t;
     S.capture(run, s, att.owner, prev);
+    if (prev >= 0 && run.stats.leaders[prev]) run.stats.leaders[prev].lost++;   // did the 35% leader lose ground?
+    if (run.coalition && prev === run.coalition.target) run.coalition.taken = (run.coalition.taken || 0) + 1;
     s.gar.n = att.n; s.gar.vet = Math.min(1, att.vet + C.army.vetPerBattle * af.mods.vetGain); s.gar.ships = att.ships; s.gar.sdur = att.sdur;
     if (af.mods.medics) s.gar.n += Math.floor(Math.max(0, att.n0 - att.n) * af.mods.medics);
     af.stats.captured++;
     af.lastWin = run.t;
     run.fx.push({ type: 'captured', sys: s.id, owner: att.owner, prev, size: b.a0 + b.d0 });
     S.logMoment(run, af.short + ' TOOK ' + s.name + (df ? ' FROM ' + df.short : ''), att.owner === 0 ? 'good' : prev === 0 ? 'bad' : 'info', att.owner, true);
-    if (prev >= 0) S.queueDraft(run, af, 'capture');
     if (prev >= 0 && b.wasCapital) S.eliminate(run, prev, att.owner);
   }
-  /** Ownership change. Buildings survive damaged (or all of them, at 50%, for Salvage Co). */
+  /** Ownership change. Everything built there survives, broken: it needs repairs before it works again. */
   S.capture = function (run, s, newOwner, prev) {
-    const f = run.factions[newOwner];
     s.owner = newOwner;
     s.lastCaptured = run.t;
     s.captureCount++;
@@ -304,28 +312,9 @@
     s.mil = 0;
     s.pop = Math.floor(s.pop / 2);
     if (s.capital === prev && prev >= 0) s.capital = -1;
-    if (f.mods.salvage) {
-      s.station.dur = Math.min(s.station.dur, 50);
-      for (const p of s.planets) if (p.ext) p.ext.dur = Math.min(p.ext.dur, 50);
-      for (const l of s.lines) l.dur = Math.min(l.dur, 50);
-      s.fdur = Math.min(s.fdur, 50); s.plat.dur = Math.min(s.plat.dur, 50);
-    } else {
-      s.station.dur = 0;
-      for (const p of s.planets) if (p.ext) { if (run.rng() < 0.4) p.ext = null; else p.ext.dur = 0; }
-      s.lines = s.lines.filter(() => run.rng() >= 0.5);
-      for (const l of s.lines) l.dur = 0;
-      s.freighters = Math.floor(s.freighters / 2); s.fdur = 0;
-      for (const l of s.lines) l.fr = Math.min(l.fr, s.freighters);
-      fixFreighters(s);
-      s.plat.dur = 0;
-    }
-    S.recomputeMods(run, f);
+    S.wreckForCapture(s);
+    s.plat.dur = 0;
   };
-  function fixFreighters(s) {
-    let used = 0;
-    for (const l of s.lines) { l.fr = Math.max(0, Math.min(l.fr, s.freighters - used)); used += l.fr; }
-  }
-  S.fixFreighters = fixFreighters;
   function sendBack(run, att, fromSys, lossFrac) {
     const n = Math.max(0, att.n - Math.ceil(att.n * lossFrac));
     if (n + att.ships <= 0) return null;

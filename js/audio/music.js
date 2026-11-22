@@ -1,4 +1,4 @@
-/* ATLAS SYNDICATE v5 — audio/music.js (v4's sequencer, retargeted)
+/* ATLAS SYNDICATE v6 — audio/music.js (v4's sequencer, retargeted)
    Procedural industrial soundtrack. A look-ahead step sequencer drives layers that fade in with
    intensity: 0 drone, 1 machine percussion, 2 bass pulse + struck-metal tones, 3 hats (at war),
    4 drive (arpeggio, faster tempo: you are under attack). Enemy armies massing on your border add

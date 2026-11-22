@@ -1,59 +1,60 @@
-/* ATLAS SYNDICATE v5 — config.js
-   Every tunable number, the palette and all game data tables (corporations, cards, events, factions).
-   Classic script: everything hangs off the single global namespace AS. */
+/* ATLAS SYNDICATE v6 — config.js
+   Every tunable number, the palette and all game data tables (resources, buildings, upgrades, events,
+   factions, difficulty). Classic script: everything hangs off the single global namespace AS. */
 (function (AS) {
   'use strict';
 
-  AS.VERSION = '5.0.0';
+  AS.VERSION = '6.0.0';
+  AS.SAVE_VERSION = 6;
 
   AS.CONFIG = {
-    view: { minW: 480, minH: 270, scales: { large: [480, 270], medium: [640, 360], small: [800, 450] } },
+    view: { minW: 400, minH: 225 },
     sim: { step: 0.1, maxFrameDt: 0.05, maxStepsPerFrame: 40, maxUrlSpeed: 20, hudSpeeds: [1, 2, 3] },
     camera: { zooms: [1, 2, 3], margin: 60, tipDelay: 0.3, glide: 6 },
 
     game: {
       length: 1800,          // 30:00 timer; most systems wins when it runs out
       protect: 240,          // 0:00-4:00: nobody may attack anybody
-      cycle: 10,             // credits, salaries and repairs settle every cycle (seconds)
-      cardEvery: 180,        // a card draft every 3 minutes
-      leaderShare: 0.35,     // leader pressure kicks in at this share of the galaxy
+      cycle: 10,             // production, salaries, rations and upkeep settle every cycle (seconds)
+      leaderShare: 0.35,     // a coalition forms against anyone holding this share of the galaxy
+      endgame: 1080,         // from 18:00 rival capitals become everybody's priority
       histEvery: 10,
     },
+    coalition: { duration: 300, cooldown: 30, strikeFirst: 30, strikeEvery: 30, breakShare: 0.27 },
 
-    galaxy: { arms: 5, perArm: 4, core: 4, armR0: 72, armDR: 42, twist: 0.5, squash: 0.58, coreR: 30 },
+    galaxy: { arms: 6, perArm: 3, core: 6, armR0: 86, armDR: 52, twist: 0.42, squash: 0.58, coreR: 38 },
+
+    /* the planet cross-section: w x h underground cells below a strip of surface slots */
+    ground: { w: 32, h: 16, hardCost: [1, 2, 4], drillCost: 2 },
 
     econ: {
-      startCredits: 450,
-      extractorCost: 100, lineCost: 50, freighterCost: 60, stationCost: 200,
-      perRich: 2,            // an extractor makes richness x 2 units per cycle
-      pairValue: 8,          // credits per ORE+ENERGY pair the factory processes
-      surplusValue: 1,       // unpaired units sell for this
-      popBase: 3, popPerFood: 3, popMax: 30, popMult: 0.05,   // output x (1 + pop x 0.05)
-      baseLines: 2, linesAtPop: [12, 22], maxLines: 6,
-      startFreighters: 2, maxFreighters: 8,
+      start: { credits: 650, alloy: 100, fuel: 40, food: 80 },
+      levy: 5,               // credits per owned system per cycle
+      extractRate: 1.6,      // raw units per cycle from a drilled deposit (+0.07 per row of depth)
+      depthRate: 0.07,
+      procCap: 4,            // raw units a processor can take per cycle
+      bonus: 1.5,            // processor on a matching planet type
+      mint: 6,               // credits per gold unit
+      pathCap: 6,            // units per cycle, each direction
+      basePathways: 2, maxPathways: 6,
+      popMax: 20, popFood: 0.05, popMult: 0.015,
     },
-    dur: {
-      decay: 1.2,            // buildings lose this much durability per cycle
-      equipDecay: 0.5,       // warships and platforms per cycle
-      repairFrac: 0.45,      // full repair costs 45% of the purchase price
-      autoRepairAt: 50,      // auto-repair fixes anything below this at the next cycle
-      battleDmg: 3, raidDmg: 9,
-    },
+    dur: { decay: 1.0, autoRepairAt: 50, repairFrac: 0.4, battleDmg: 3, raidDmg: 10 },
     army: {
-      salary: 0.8, salaryScale: 100,   // salary per soldier per cycle x (1 + army / 100)
-      trainTime: 2.0, batch: 5, maxQueue: 25,
-      speed: 7,              // galaxy units per second along a lane
+      recruitCost: 8, salary: 0.5, salaryScale: 100, rations: 0.15,
+      trainTime: 2.0, batch: 5, maxQueue: 25, speed: 7,
       startSoldiers: 12, startVet: 0.2, startPlatforms: 2,
       vetPerCycle: 0.004, vetPerBattle: 0.15, vetBonus: 0.5,
-      desertFrac: 0.1,
+      desertFrac: 0.1, hungerMult: 0.75,
+      laneFuel: 2, fuelPer10: 2,      // fuel per lane = 2 + 2 per 10 strength sent
     },
-    equip: { shipCost: 120, shipPower: 5, platformCost: 150, platformPower: 10, maxPlatforms: 6 },
-    combat: { round: 0.8, k: 0.15, defBonus: 1.2, capitalBonus: 1.6, raidRounds: 3, raidLoot: 25, retreatLoss: 0.1, maxRounds: 30 },
-    buy: { base: 480, growth: 1.25, perGarrison: 8 },   // price = 480 x 1.25^systems owned + 8 per defender
-    neutral: { core: [34, 56], arm: [[18, 26], [11, 17], [6, 11], [4, 8]], vet: 0.3 },
+    equip: { shipCost: [90, 40], shipPower: 5, shipFuel: 1, platCost: [100, 50], platformPower: 10, maxPlatforms: 6 },
+    combat: { round: 0.8, k: 0.15, defBonus: 1.2, capitalBonus: 1.15, raidRounds: 3, raidLoot: 25, retreatLoss: 0.1, maxRounds: 30 },
+    buy: { base: 480, growth: 1.25, perGarrison: 8 },
+    neutral: { core: [30, 48], arm: [[16, 24], [9, 14]], vet: 0.3 },
     events: { first: 270, every: 240, jitter: 30, warn: 60 },
     history: { every: 10 },
-    selftest: { seed: 20261121 },
+    selftest: { seed: 20261122 },
     save: { every: 10 },
   };
 
@@ -67,27 +68,83 @@
   AS.PAL_KEYS = '0123456789abcdefghijklmnopqrstuv';
   AS.PAL_RGB = AS.PALETTE.map(h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
 
-  /* ---------- resources ---------- */
-  AS.RES_KEYS = ['ore', 'energy', 'food'];
+  /* ---------- resources: raw deposit -> processed stock ---------- */
+  AS.RES_KEYS = ['metal', 'gold', 'ice', 'fuel'];
   AS.RES = {
-    ore:    { name: 'ORE',    col: 11, kinds: ['rust', 'cinder', 'dwarf'], help: 'ORE + ENERGY AT THE FACTORY MAKE CREDITS.' },
-    energy: { name: 'ENERGY', col: 26, kinds: ['gas', 'ice'],             help: 'ENERGY + ORE AT THE FACTORY MAKE CREDITS.' },
-    food:   { name: 'FOOD',   col: 22, kinds: ['terran', 'ice2'],         help: 'FOOD GROWS POPULATION. POPULATION MULTIPLIES OUTPUT.' },
+    fuel:  { name: 'FUEL',  raw: 'CRUDE', out: 'fuel',    outName: 'FUEL',    col: 1,  hi: 10, mark: 18, ext: 'pump',     proc: 'refinery', planets: ['gas', 'cinder'],
+      use: 'FUEL MOVES ARMIES (EVERY LANE COSTS FUEL) AND KEEPS WARSHIPS RUNNING.' },
+    ice:   { name: 'ICE',   raw: 'ICE',   out: 'food',    outName: 'FOOD',    col: 25, hi: 31, mark: 26, ext: 'icedrill', proc: 'water',    planets: ['ice', 'ice2'],
+      use: 'WATER AND FOOD: SOLDIER RATIONS AND POPULATION GROWTH.' },
+    metal: { name: 'METAL', raw: 'ORE',   out: 'alloy',   outName: 'ALLOY',   col: 10, hi: 6,  mark: 11, ext: 'mine',     proc: 'smelter',  planets: ['rust', 'cinder'],
+      use: 'ALLOY: BUILDINGS, REPAIRS, WARSHIPS AND PLATFORMS.' },
+    gold:  { name: 'GOLD',  raw: 'GOLD',  out: 'credits', outName: 'CREDITS', col: 13, hi: 14, mark: 13, ext: 'goldmine', proc: 'mint',     planets: ['dwarf', 'terran'],
+      use: 'CREDITS: SALARIES, RECRUITS, PATHWAYS, UPGRADES, BUYING SYSTEMS.' },
   };
+  AS.STOCK_KEYS = ['credits', 'alloy', 'fuel', 'food'];
+  AS.STOCK = { credits: { name: 'CREDITS', col: 13 }, alloy: { name: 'ALLOY', col: 6 }, fuel: { name: 'FUEL', col: 18 }, food: { name: 'FOOD', col: 22 } };
+
+  /* ---------- buildings: exactly two per resource ---------- */
+  AS.BLD = {
+    mine:     { name: 'MINE',        res: 'metal', role: 'ext',  cost: [60, 0],   art: 'mine' },
+    smelter:  { name: 'SMELTER',     res: 'metal', role: 'proc', cost: [85, 0],  art: 'smelter' },
+    goldmine: { name: 'GOLD MINE',   res: 'gold',  role: 'ext',  cost: [60, 15], art: 'mine' },
+    mint:     { name: 'MINT',        res: 'gold',  role: 'proc', cost: [80, 20], art: 'depot' },
+    icedrill: { name: 'ICE DRILL',   res: 'ice',   role: 'ext',  cost: [50, 15],  art: 'drill' },
+    water:    { name: 'WATER PLANT', res: 'ice',   role: 'proc', cost: [70, 20], art: 'agri' },
+    pump:     { name: 'FUEL PUMP',   res: 'fuel',  role: 'ext',  cost: [50, 15],  art: 'skimmer' },
+    refinery: { name: 'REFINERY',    res: 'fuel',  role: 'proc', cost: [70, 20], art: 'fab' },
+  };
+  // the mine and smelter cost no alloy, so alloy production can always be restarted
+  AS.BLD_KEYS = ['mine', 'smelter', 'goldmine', 'mint', 'icedrill', 'water', 'pump', 'refinery'];
+  AS.COSTS = { conveyor: [10, 0], pathway: [60, 20] };
+
+  /* ---------- the upgrade shop: four tracks, bought in order, prices rise along each track ---------- */
+  AS.UPGRADES = {
+    ext: { name: 'EXTRACTION', col: 11, items: [
+      { key: 'bits',   name: 'DIAMOND BITS',       desc: 'DRILLING COSTS 30% LESS.' },
+      { key: 'rigs',   name: 'HIGH-PRESSURE RIGS', desc: 'EXTRACTORS +25% OUTPUT.' },
+      { key: 'shafts', name: 'REINFORCED SHAFTS',  desc: 'EXTRACTORS AND DRILLS WEAR 50% SLOWER.' },
+      { key: 'deep',   name: 'DEEP-CORE RIGS',     desc: 'EXTRACTORS +25% OUTPUT.' },
+      { key: 'survey', name: 'SURFACE SURVEY',     desc: '+1 BUILDING SLOT ON EVERY PLANET.' },
+    ] },
+    proc: { name: 'PROCESSING', col: 13, items: [
+      { key: 'hoppers', name: 'LARGER HOPPERS',  desc: 'PROCESSORS TAKE 30% MORE INPUT.' },
+      { key: 'alloyx',  name: 'CLEAN SMELTING',  desc: 'SMELTERS MAKE 25% MORE ALLOY.' },
+      { key: 'minting', name: 'FINE MINTING',    desc: 'MINTS PAY 8 CREDITS PER GOLD INSTEAD OF 6.' },
+      { key: 'hydro',   name: 'HYDROPONICS',     desc: 'WATER PLANTS MAKE 40% MORE FOOD.' },
+      { key: 'crack',   name: 'CRACKING TOWERS', desc: 'REFINERIES MAKE 40% MORE FUEL.' },
+    ] },
+    log: { name: 'LOGISTICS', col: 26, items: [
+      { key: 'wide',   name: 'WIDE PATHWAYS',    desc: 'PATHWAYS CARRY 50% MORE.' },
+      { key: 'path1',  name: 'EXTRA PATHWAY',    desc: '+1 PATHWAY IN EVERY SYSTEM.' },
+      { key: 'belts',  name: 'STEEL CONVEYORS',  desc: 'CONVEYORS AND PATHWAYS WEAR 50% SLOWER.' },
+      { key: 'path2',  name: 'SECOND PATHWAY',   desc: '+1 PATHWAY IN EVERY SYSTEM.' },
+      { key: 'drives', name: 'EFFICIENT DRIVES', desc: 'ARMIES USE 40% LESS FUEL.' },
+    ] },
+    mil: { name: 'MILITARY', col: 17, items: [
+      { key: 'wages',   name: 'DRILL INSTRUCTORS', desc: 'SOLDIER SALARIES -20%.' },
+      { key: 'kitchen', name: 'FIELD KITCHENS',    desc: 'SOLDIER RATIONS -40%.' },
+      { key: 'grid',    name: 'PLATFORM GRID',     desc: 'DEFENCE PLATFORMS +50% STRENGTH.' },
+      { key: 'guns',    name: 'HEAVY GUNS',        desc: 'WARSHIPS +50% STRENGTH.' },
+      { key: 'cadre',   name: 'VETERAN CADRE',     desc: 'VETERANS UP TO +100% STRENGTH INSTEAD OF +50%.' },
+    ] },
+  };
+  AS.UPG_TRACKS = ['ext', 'proc', 'log', 'mil'];
+  AS.upgPrice = level => [Math.round(150 * Math.pow(1.6, level)), Math.round(20 * Math.pow(1.6, level))];
 
   /* ---------- factions: slot 0 is the player ---------- */
   AS.FACTIONS = [
-    { name: 'ATLAS SYNDICATE', short: 'ATLAS', pers: 'player',      col: 13, dark: 11, deep: 9,  icon: 'atlas' },
-    { name: 'HALBERD',         short: 'HALBERD', pers: 'warlord',   col: 17, dark: 16, deep: 15, icon: 'warlord' },
-    { name: 'GILT',            short: 'GILT',  pers: 'merchant',    col: 31, dark: 6,  deep: 3,  icon: 'merchant' },
-    { name: 'BASTION',         short: 'BASTION', pers: 'turtle',    col: 22, dark: 21, deep: 20, icon: 'turtle' },
-    { name: 'JACKAL',          short: 'JACKAL', pers: 'opportunist', col: 26, dark: 25, deep: 24, icon: 'opportunist' },
-    { name: 'CINDER',          short: 'CINDER', pers: 'raider',     col: 18, dark: 10, deep: 9,  icon: 'raider' },
+    { name: 'ATLAS SYNDICATE', short: 'ATLAS', pers: 'player',        col: 13, dark: 11, deep: 9,  icon: 'atlas' },
+    { name: 'HALBERD',         short: 'HALBERD', pers: 'warlord',     col: 17, dark: 16, deep: 15, icon: 'warlord' },
+    { name: 'GILT',            short: 'GILT', pers: 'merchant',       col: 31, dark: 6,  deep: 3,  icon: 'merchant' },
+    { name: 'BASTION',         short: 'BASTION', pers: 'turtle',      col: 22, dark: 21, deep: 20, icon: 'turtle' },
+    { name: 'JACKAL',          short: 'JACKAL', pers: 'opportunist',  col: 26, dark: 25, deep: 24, icon: 'opportunist' },
+    { name: 'CINDER',          short: 'CINDER', pers: 'raider',       col: 18, dark: 10, deep: 9,  icon: 'raider' },
   ];
   AS.NEUTRAL = { name: 'INDEPENDENT', col: 6, dark: 4, deep: 3, icon: 'neutral' };
   AS.PERS_NAMES = { player: 'PLAYER', warlord: 'WARLORD', merchant: 'MERCHANT', turtle: 'TURTLE', opportunist: 'OPPORTUNIST', raider: 'RAIDER', balanced: 'BALANCED' };
   AS.PERS_DESC = {
-    warlord: 'AGGRESSIVE. ATTACKS ITS STRONGEST NEIGHBOUR. SPENDS HEAVILY ON SOLDIERS.',
+    warlord: 'AGGRESSIVE. ROLLS OVER WEAKER NEIGHBOURS, THEN HITS THE STRONGEST WHEN THE ODDS ARE GOOD.',
     merchant: 'BIG ECONOMY, BUYS SYSTEMS. FIGHTS WHEN ATTACKED OR WHEN ODDS ARE OVERWHELMING. HITS HARD LATE.',
     turtle: 'FORTIFIES CHOKEPOINTS. RARELY EXPANDS. PUNISHES OVEREXTENDED ATTACKERS.',
     opportunist: 'ATTACKS WHOEVER JUST LOST A BATTLE OR LEFT A SYSTEM LIGHTLY DEFENDED.',
@@ -97,96 +154,44 @@
   AS.SYSTEM_NAMES = ['KESSA', 'VARGA', 'ORPHEON', 'KESTREL', 'MORROW', 'GANTRY', 'CRUCIBLE', 'TANNER', 'COKER', 'FOUNDRY', 'ANVIL', 'MARROW',
     'HEMATITE', 'GRIST', 'SLAG', 'KILN', 'RIME', 'SLEET', 'TALLOW', 'MERIDIAN', 'BELLOWS', 'OSSIA', 'NYX', 'SABLE', 'VANTA', 'ORRIN', 'PELL',
     'THRACE', 'CAIRN', 'DREDGE', 'GALLOWAY', 'HALCYON', 'SCORIA', 'ASHFALL', 'FERRUM', 'CLINKER', 'TETHYS', 'VESPER', 'FLOE', 'JOVAN'];
-
-  /* ---------- corporations: one strong, simple ability each ---------- */
-  AS.CORPS = {
-    halden:  { name: 'HALDEN ARMS',     desc: 'SOLDIER SALARIES -30%.' },
-    swift:   { name: 'SWIFT HAULAGE',   desc: 'FREIGHTERS 50% FASTER: EACH ONE SERVES 1.5 STOPS.' },
-    krone:   { name: 'KRONE SUPPLY',    desc: 'ALL PURCHASES COST 20% LESS.' },
-    duramax: { name: 'DURAMAX',         desc: 'BUILDINGS AND EQUIPMENT LOSE DURABILITY 50% SLOWER.' },
-    salvage: { name: 'SALVAGE CO',      desc: 'CAPTURED SYSTEMS KEEP ALL BUILDINGS, AT 50% DURABILITY.' },
-    fortis:  { name: 'FORTIS DEFENCE',  desc: 'YOUR SYSTEMS DEFEND WITH +20% STRENGTH.' },
-    rapid:   { name: 'RAPID TRANSIT',   desc: 'ARMIES MOVE 40% FASTER ALONG LANES.' },
-    drill:   { name: 'DRILL MASTERS',   desc: 'SOLDIERS TRAIN TWICE AS FAST AND START AS VETERANS.' },
-  };
-  AS.CORP_KEYS = Object.keys(AS.CORPS);
-
-  /* ---------- upgrade cards (Turmoil-style draft): exact effects in plain numbers ---------- */
-  AS.CARDS = {
-    // economy
-    deepcore:  { cat: 'econ', name: 'DEEP CORE DRILLS',  desc: 'EXTRACTORS MAKE 15% MORE.' },
-    foundry:   { cat: 'econ', name: 'AUTOMATED FOUNDRY', desc: 'FACTORY CREDITS +12%.' },
-    hydro:     { cat: 'econ', name: 'HYDROPONICS',       desc: 'EACH FOOD SUPPORTS 30% MORE POPULATION.' },
-    trade:     { cat: 'econ', name: 'TRADE CHARTER',     desc: 'SURPLUS UNITS SELL FOR 2 CR INSTEAD OF 1.' },
-    bulk:      { cat: 'econ', name: 'BULK CONTRACTS',    desc: 'SYSTEMS WITH 4+ EXTRACTORS EARN +10% CREDITS.' },
-    taxes:     { cat: 'econ', name: 'TAX OFFICE',        desc: '+1 CR PER CYCLE FOR EVERY 4 POPULATION.' },
-    leanfix:   { cat: 'econ', name: 'LEAN REPAIRS',      desc: 'REPAIRS COST 40% LESS.' },
-    bonds:     { cat: 'econ', name: 'WAR BONDS',         desc: '+600 CREDITS NOW.', stack: true },
-    // military
-    sergeants: { cat: 'mil', name: 'DRILL SERGEANTS',   desc: 'SOLDIERS TRAIN TWICE AS FAST.' },
-    cadre:     { cat: 'mil', name: 'VETERAN CADRE',     desc: 'VETERANS GAIN DOUBLE STRENGTH: UP TO +100% INSTEAD OF +50%.' },
-    wages:     { cat: 'mil', name: 'LOW WAGES',         desc: 'SOLDIER SALARIES -20%.' },
-    shock:     { cat: 'mil', name: 'SHOCK TROOPS',      desc: 'YOUR ATTACKING ARMIES +15% STRENGTH.' },
-    warfound:  { cat: 'mil', name: 'WAR FOUNDRIES',     desc: 'WARSHIPS COST 30% LESS.' },
-    guns:      { cat: 'mil', name: 'HEAVY GUNS',        desc: 'WARSHIPS +50% STRENGTH.' },
-    medics:    { cat: 'mil', name: 'FIELD MEDICS',      desc: '25% OF SOLDIERS LOST IN A BATTLE YOU WIN RETURN.' },
-    hardened:  { cat: 'mil', name: 'BATTLE HARDENED',   desc: 'SOLDIERS GAIN DOUBLE VETERANCY FROM BATTLES.' },
-    mercs:     { cat: 'mil', name: 'MERCENARY COMPANY', desc: '+15 SOLDIERS AT YOUR CAPITAL NOW.', stack: true },
-    // logistics
-    extraline: { cat: 'log', name: 'EXTRA LINE',        desc: '+1 SUPPLY LINE IN EVERY SYSTEM.' },
-    fastfr:    { cat: 'log', name: 'FAST FREIGHTERS',   desc: 'EACH FREIGHTER SERVES +0.5 STOPS.' },
-    drives:    { cat: 'log', name: 'HYPERLANE DRIVES',  desc: 'ARMIES MOVE 30% FASTER.' },
-    hulls:     { cat: 'log', name: 'CHEAP HULLS',       desc: 'LINES AND FREIGHTERS COST 40% LESS.' },
-    tough:     { cat: 'log', name: 'HARDENED LINES',    desc: 'LINES AND FREIGHTERS LOSE DURABILITY 50% SLOWER.' },
-    interior:  { cat: 'log', name: 'INTERIOR LINES',    desc: 'ARMIES MOVING BETWEEN YOUR OWN SYSTEMS ARE 50% FASTER.' },
-    // defence
-    fortress:  { cat: 'def', name: 'FORTRESS DOCTRINE', desc: 'DEFENDER BONUS +15%: 1.35X INSTEAD OF 1.2X.' },
-    grid:      { cat: 'def', name: 'PLATFORM GRID',     desc: 'DEFENCE PLATFORMS +50% STRENGTH.' },
-    cheapplat: { cat: 'def', name: 'PREFAB PLATFORMS',  desc: 'DEFENCE PLATFORMS COST 40% LESS.' },
-    militia:   { cat: 'def', name: 'MILITIA',           desc: 'EVERY SYSTEM YOU OWN DEFENDS WITH +5 STRENGTH.' },
-    radar:     { cat: 'def', name: 'EARLY WARNING',     desc: 'SEE EXACT ARMIES TWO LANES AWAY, NOT ONE.' },
-    armour:    { cat: 'def', name: 'ARMOURED STATIONS', desc: 'BUILDINGS TAKE 50% LESS BATTLE AND RAID DAMAGE.' },
-    guard:     { cat: 'def', name: 'CAPITAL GUARD',     desc: 'YOUR CAPITAL DEFENDS WITH +40% STRENGTH.' },
-  };
-  AS.CARD_KEYS = Object.keys(AS.CARDS);
-  AS.CARD_CATS = { econ: ['ECONOMY', 13], mil: ['MILITARY', 17], log: ['LOGISTICS', 26], def: ['DEFENCE', 22] };
+  AS.PLANET_SUFFIX = ['I', 'II', 'III', 'IV', 'V', 'VI'];
 
   /* ---------- galaxy events (announced 60 s ahead) ---------- */
   AS.EVENTS = {
-    storm:  { name: 'SOLAR STORM',        dur: 60,  w: 1.0 },
-    boom:   { name: 'MARKET BOOM',        dur: 90,  w: 1.0, value: 5 },
-    mercs:  { name: 'MERCENARY SURPLUS',  dur: 90,  w: 0.9, salary: 0.5, train: 3 },
-    lane:   { name: 'LANE COLLAPSE',      dur: 120, w: 0.9 },
-    pirate: { name: 'PIRATE SURGE',       dur: 0,   w: 0.8, mult: 1.5, add: 5 },
+    storm:  { name: 'SOLAR STORM',       dur: 60,  w: 1.0 },
+    boom:   { name: 'GOLD RUSH',         dur: 90,  w: 1.0, value: 1.5 },
+    mercs:  { name: 'MERCENARY SURPLUS', dur: 90,  w: 0.9, salary: 0.5, train: 3 },
+    lane:   { name: 'LANE COLLAPSE',     dur: 120, w: 0.9 },
+    pirate: { name: 'PIRATE SURGE',      dur: 0,   w: 0.8, mult: 1.5, add: 5 },
   };
   AS.EVENT_KEYS = Object.keys(AS.EVENTS);
 
-  /* ---------- difficulty ---------- */
+  /* ---------- difficulty: full, fair economies everywhere; Easy rivals play worse, Hard rivals play faster ---------- */
   AS.DIFFICULTY = {
-    easy:   { name: 'EASY',   think: 9.0, odds: 0.2,   sources: 1, focus: 0.3, army: 0.7, aggr: 0.5, noise: 0.35, econ: 0.45, income: 1.0,  repairAt: 15, react: 0.5,
-      desc: 'RIVALS REACT SLOWLY, BUILD LESS AND ONLY TAKE SAFE FIGHTS.' },
-    normal: { name: 'NORMAL', think: 4.0, odds: 0.0,   sources: 2, focus: 1.0, army: 1.0, aggr: 1.0, noise: 0.15, econ: 1.0, income: 1.0,  repairAt: 30, react: 1.0,
+    easy:   { name: 'EASY',   think: 15.0, odds: 0.24, sources: 1, pick: 0.9,  focus: 0.45, react: 0.5, repairAt: 30, income: 1.0, acts: 1, aggr: 0.45,
+      desc: 'RIVALS THINK SLOWLY, PICK WORSE TARGETS AND TAKE FEWER RISKS.' },
+    normal: { name: 'NORMAL', think: 6.0, odds: 0.06,  sources: 2, pick: 0.35, focus: 0.85, react: 0.85, repairAt: 35, income: 1.0, acts: 2, aggr: 0.75,
       desc: 'RIVALS PLAY THE SAME RULES AS YOU, AT A FAIR PACE.' },
-    hard:   { name: 'HARD',   think: 2.5, odds: -0.05, sources: 3, focus: 1.15, army: 1.0, aggr: 1.1, noise: 0.05, econ: 1.0, income: 1.15, repairAt: 40, react: 1.3,
+    hard:   { name: 'HARD',   think: 2.5, odds: -0.05, sources: 3, pick: 0.0,  focus: 1.15, react: 1.3, repairAt: 45, income: 1.15,
       desc: 'FAST, COORDINATED RIVALS. THEY EARN +15% CREDITS (STATED BONUS).' },
   };
   AS.DIFF_KEYS = ['easy', 'normal', 'hard'];
 
   /* ---------- achievements (stored locally) ---------- */
   AS.ACHIEVEMENTS = [
-    { id: 'chain',    name: 'FIRST CHAIN',     desc: 'Complete an ORE + ENERGY chain.' },
-    { id: 'conquer',  name: 'FIRST CONQUEST',  desc: 'Capture a system by force.' },
-    { id: 'buyer',    name: 'PEACEFUL TERMS',  desc: 'Buy a neutral system.' },
-    { id: 'hold',     name: 'HELD THE LINE',   desc: 'Win a defensive battle against a rival.' },
-    { id: 'raid',     name: 'HIT AND RUN',     desc: 'Complete a raid.' },
-    { id: 'capital',  name: 'DECAPITATION',    desc: 'Capture a rival capital.' },
-    { id: 'eight',    name: 'EIGHT SYSTEMS',   desc: 'Hold 8 systems at once.' },
-    { id: 'twelve',   name: 'HALF THE GALAXY', desc: 'Hold 12 systems at once.' },
-    { id: 'army100',  name: 'STANDING ARMY',   desc: 'Field 100 soldiers.' },
-    { id: 'vet',      name: 'OLD GUARD',       desc: 'Have a garrison at full veterancy.' },
-    { id: 'win',      name: 'GALAXY TAKEN',    desc: 'Win a game.' },
-    { id: 'winhard',  name: 'HARD TERMS',      desc: 'Win on Hard.' },
-    { id: 'sweep',    name: 'CLEAN SWEEP',     desc: 'Eliminate every rival.' },
-    { id: 'nodesert', name: 'PAID IN FULL',    desc: 'Finish a game without a single desertion.' },
+    { id: 'alloy',     name: 'FIRST ALLOY',      desc: 'Smelt your first alloy.' },
+    { id: 'gold',      name: 'STRIKE GOLD',      desc: 'Mint credits from gold.' },
+    { id: 'port',      name: 'ROUTED',           desc: 'Process a resource on another planet through a port.' },
+    { id: 'conquer',   name: 'FIRST CONQUEST',   desc: 'Capture a system by force.' },
+    { id: 'buyer',     name: 'PEACEFUL TERMS',   desc: 'Buy a neutral system.' },
+    { id: 'hold',      name: 'HELD THE LINE',    desc: 'Win a defensive battle against a rival.' },
+    { id: 'capital',   name: 'DECAPITATION',     desc: 'Capture a rival capital.' },
+    { id: 'coalition', name: 'COALITION',        desc: 'Fight in a coalition against a leader.' },
+    { id: 'shop',      name: 'TOP OF THE TRACK', desc: 'Buy all five upgrades of one track.' },
+    { id: 'eight',     name: 'EIGHT SYSTEMS',    desc: 'Hold 8 systems at once.' },
+    { id: 'army100',   name: 'STANDING ARMY',    desc: 'Field 100 soldiers.' },
+    { id: 'win',       name: 'GALAXY TAKEN',     desc: 'Win a game.' },
+    { id: 'winhard',   name: 'HARD TERMS',       desc: 'Win on Hard.' },
+    { id: 'sweep',     name: 'CLEAN SWEEP',      desc: 'Eliminate every rival.' },
   ];
 })(globalThis.AS = globalThis.AS || {});

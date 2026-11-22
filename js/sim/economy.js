@@ -1,198 +1,215 @@
-/* ATLAS SYNDICATE v5 — sim/economy.js
-   Each owned system runs its own small economy: extractors on planets, supply lines with freighters,
-   a factory at the station. Only completed chains pay. Credits are shared across the empire and settle
-   once per cycle: income - salaries - repairs. Also: durability, modifiers and every purchase. */
+/* ATLAS SYNDICATE v6 — sim/economy.js
+   The hands-on economy. On each planet: extractors drill down to deposits; conveyors carry raw resource
+   to a processor on the same planet, or to a port; pathways between planets carry it to the matching
+   port on the other planet, where a conveyor feeds a processor there. Processed output (alloy, fuel,
+   food, credits) goes into the empire stockpile. Everything wears out and needs credits + alloy to fix.
+   S.sysFlow() is the one place that decides what flows where, and why not: the renderer, the AI, the
+   forecast and the cycle all read it, so what the screen shows is exactly what the simulation does. */
 (function (AS) {
   'use strict';
 
   const U = AS.U, C = AS.CONFIG, S = AS.S, E = C.econ;
 
-  /* ---------- modifiers: corporation + cards (+ the stated Hard bonus) ---------- */
-  S.baseMods = () => ({
-    salary: 1, train: 1, vetStart: 0, cost: 1, decay: 1, lineDecay: 1, salvage: false, def: 1, speed: 1, interior: 1,
-    reach: 1, extract: 1, factory: 1, hydro: 1, surplus: 1, bulk: false, tax: 0, repair: 1, vetBonus: C.army.vetBonus,
-    attack: 1, shipCost: 1, shipPower: 1, medics: 0, vetGain: 1, lineCost: 1, extraLines: 0, defBonus: C.combat.defBonus,
-    platPower: 1, platCost: 1, militia: 0, sight: 1, armour: 1, capital: 1, income: 1,
-  });
+  /* ---------- modifiers from the upgrade shop (+ the stated Hard bonus) ---------- */
   S.recomputeMods = function (run, f) {
-    const m = S.baseMods();
-    switch (f.corp) {
-      case 'halden': m.salary *= 0.7; break;
-      case 'swift': m.reach += 0.5; break;
-      case 'krone': m.cost *= 0.8; break;
-      case 'duramax': m.decay *= 0.5; break;
-      case 'salvage': m.salvage = true; break;
-      case 'fortis': m.def *= 1.2; break;
-      case 'rapid': m.speed *= 1.4; break;
-      case 'drill': m.train *= 2; m.vetStart = 0.35; break;
-    }
-    for (const k of f.cards) {
-      switch (k) {
-        case 'deepcore': m.extract *= 1.15; break;
-        case 'foundry': m.factory *= 1.12; break;
-        case 'hydro': m.hydro *= 1.3; break;
-        case 'trade': m.surplus = 2; break;
-        case 'bulk': m.bulk = true; break;
-        case 'taxes': m.tax = 0.25; break;
-        case 'leanfix': m.repair *= 0.6; break;
-        case 'sergeants': m.train *= 2; break;
-        case 'cadre': m.vetBonus = 1.0; break;
-        case 'wages': m.salary *= 0.8; break;
-        case 'shock': m.attack *= 1.15; break;
-        case 'warfound': m.shipCost *= 0.7; break;
-        case 'guns': m.shipPower *= 1.5; break;
-        case 'medics': m.medics = 0.25; break;
-        case 'hardened': m.vetGain *= 2; break;
-        case 'extraline': m.extraLines += 1; break;
-        case 'fastfr': m.reach += 0.5; break;
-        case 'drives': m.speed *= 1.3; break;
-        case 'hulls': m.lineCost *= 0.6; break;
-        case 'tough': m.lineDecay *= 0.5; break;
-        case 'interior': m.interior *= 1.5; break;
-        case 'fortress': m.defBonus += 0.15; break;
-        case 'grid': m.platPower *= 1.5; break;
-        case 'cheapplat': m.platCost *= 0.6; break;
-        case 'militia': m.militia = 5; break;
-        case 'radar': m.sight = 2; break;
-        case 'armour': m.armour *= 0.5; break;
-        case 'guard': m.capital *= 1.4; break;
-      }
-    }
-    if (f.id !== 0) m.income *= AS.DIFFICULTY[run.diff].income;   // Hard only: the stated rival bonus
+    const u = f.up, m = {
+      drill: 1, extract: 1, extWear: 1, slots: 0, procCap: 1, alloy: 1, mint: E.mint, food: 1, fuel: 1,
+      path: 1, pathways: 0, beltWear: 1, armyFuel: 1, salary: 1, rations: 1, platPower: 1, shipPower: 1, vetBonus: C.army.vetBonus,
+      defBonus: C.combat.defBonus, def: 1, attack: 1, income: 1, speed: 1, interior: 1, capital: 1, sight: 1, militia: 0, armour: 1, medics: 0, vetGain: 1,
+    };
+    if (u.ext >= 1) m.drill = 0.7;
+    if (u.ext >= 2) m.extract *= 1.25;
+    if (u.ext >= 3) m.extWear = 0.5;
+    if (u.ext >= 4) m.extract *= 1.25;
+    if (u.ext >= 5) m.slots = 1;
+    if (u.proc >= 1) m.procCap = 1.3;
+    if (u.proc >= 2) m.alloy = 1.25;
+    if (u.proc >= 3) m.mint = 8;
+    if (u.proc >= 4) m.food = 1.4;
+    if (u.proc >= 5) m.fuel = 1.4;
+    if (u.log >= 1) m.path = 1.5;
+    if (u.log >= 2) m.pathways += 1;
+    if (u.log >= 3) m.beltWear = 0.5;
+    if (u.log >= 4) m.pathways += 1;
+    if (u.log >= 5) m.armyFuel = 0.6;
+    if (u.mil >= 1) m.salary = 0.8;
+    if (u.mil >= 2) m.rations = 0.6;
+    if (u.mil >= 3) m.platPower = 1.5;
+    if (u.mil >= 4) m.shipPower = 1.5;
+    if (u.mil >= 5) m.vetBonus = 1.0;
+    if (f.id !== 0) m.income = AS.DIFFICULTY[run.diff].income;   // Hard only: the stated rival bonus
     f.mods = m;
     return m;
   };
-
-  /* ---------- prices ---------- */
-  S.price = function (run, f, what) {
-    const m = f.mods, k = m.cost;
-    switch (what) {
-      case 'ext': return Math.round(E.extractorCost * k);
-      case 'line': return Math.round(E.lineCost * k * m.lineCost);
-      case 'freighter': return Math.round(E.freighterCost * k * m.lineCost);
-      case 'ship': return Math.round(C.equip.shipCost * k * m.shipCost);
-      case 'plat': return Math.round(C.equip.platformCost * k * m.platCost);
-      case 'station': return Math.round(E.stationCost * k);
-    }
-    return 0;
-  };
-  S.buyPrice = function (run, f, sys) {
-    const owned = S.ownCount(run, f.id);
-    return Math.round((C.buy.base * Math.pow(C.buy.growth, owned) + C.buy.perGarrison * sys.gar.n) * f.mods.cost);
-  };
+  S.baseMods = () => S.recomputeMods({ diff: 'normal' }, { id: 0, up: { ext: 0, proc: 0, log: 0, mil: 0 } });
 
   /* ---------- helpers ---------- */
   S.fac = (run, id) => run.factions[id];
   S.ownSystems = (run, fid) => run.systems.filter(s => s.owner === fid);
   S.ownCount = function (run, fid) { let n = 0; for (const s of run.systems) if (s.owner === fid) n++; return n; };
-  S.lineSlots = function (run, sys) {
-    const f = sys.owner >= 0 ? run.factions[sys.owner] : null;
-    let n = E.baseLines + (f ? f.mods.extraLines : 0);
-    for (const p of E.linesAtPop) if (sys.pop >= p) n++;
-    return Math.min(E.maxLines, n);
-  };
-  S.freeFreighters = function (sys) { let used = 0; for (const l of sys.lines) used += l.fr; return Math.max(0, sys.freighters - used); };
+  S.canPay = (f, c) => f.credits >= (c[0] || 0) && f.alloy >= (c[1] || 0);
+  function pay(f, c) { if (!S.canPay(f, c)) return false; f.credits -= c[0] || 0; f.alloy -= c[1] || 0; f.stats.spent += c[0] || 0; f.stats.alloyUsed = (f.stats.alloyUsed || 0) + (c[1] || 0); return true; }
+  S.pay = pay;
+  const short = c => ({ ok: false, reason: 'cost', cost: c });
+  S.bldCost = (f, kind) => AS.BLD[kind].cost.slice();
+  S.pathwaySlots = function (run, sys) { const f = sys.owner >= 0 ? run.factions[sys.owner] : null; return Math.min(E.maxPathways, E.basePathways + (f ? f.mods.pathways : 0)); };
+  S.pathwayById = (sys, id) => sys.pathways.find(p => p.id === id) || null;
+  S.portsOf = (sys, pi) => sys.pathways.filter(p => p.a === pi || p.b === pi);
+  S.otherPlanet = (pw, pi) => (pw.a === pi ? pw.b : pw.a);
   S.stormed = function (run, sys) {
     for (const e of run.events.active) if (e.type === 'storm' && (e.region === 'core' ? sys.region === 'core' : sys.arm === e.arm)) return true;
     return false;
   };
-  S.lineEff = function (run, sys, l, f) {
-    if (l.dur <= 0 || sys.fdur <= 0 || l.fr <= 0 || l.stops.length < 2) return 0;
-    if (S.stormed(run, sys)) return 0;
-    const reach = f ? f.mods.reach : 1;
-    return Math.min(1, l.fr * reach / Math.max(1, l.stops.length - 1));
-  };
-
-  /** What a system produces this cycle and why. Pure: does not change state. */
-  S.sysYield = function (run, sys) {
-    const f = sys.owner >= 0 ? run.factions[sys.owner] : null;
-    const m = f ? f.mods : S.baseMods();
-    const L = sys.lines, n = L.length;
-    const eff = L.map(l => S.lineEff(run, sys, l, f));
-    const best = L.map((l, i) => (l.stops.indexOf(-1) >= 0 ? eff[i] : 0));
-    for (let pass = 0; pass < n; pass++) {            // transfers: a line feeds the station through another line it touches
-      let changed = false;
-      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
-        if (i === j || best[j] <= 0) continue;
-        if (!L[i].stops.some(s => s >= 0 && L[j].stops.indexOf(s) >= 0)) continue;
-        const v = Math.min(eff[i], best[j]);
-        if (v > best[i] + 1e-9) { best[i] = v; changed = true; }
-      }
-      if (!changed) break;
+  S.extRate = (f, dep) => (E.extractRate + E.depthRate * dep.depth) * (f ? f.mods.extract : 1);
+  S.procBonus = (p, kind) => (AS.RES[AS.BLD[kind].res].planets.indexOf(p.kind) >= 0 ? E.bonus : 1);
+  S.convert = function (run, f, res, units) {
+    const m = f ? f.mods : null;
+    switch (res) {
+      case 'metal': return units * (m ? m.alloy : 1);
+      case 'gold': { let v = units * (m ? m.mint : E.mint); for (const e of run.events.active) if (e.type === 'boom') v *= AS.EVENTS.boom.value; return v; }
+      case 'ice': return units * (m ? m.food : 1);
+      case 'fuel': return units * (m ? m.fuel : 1);
     }
-    const units = { ore: 0, energy: 0, food: 0 }, per = [];
-    const warn = [];
-    let extractors = 0;
-    sys.planets.forEach((p, pi) => {
-      let frac = 0;
-      for (let i = 0; i < n; i++) if (L[i].stops.indexOf(pi) >= 0) frac = Math.max(frac, best[i]);
-      let u = 0;
-      if (p.ext) {
-        extractors++;
-        if (p.ext.dur > 0) u = p.rich * E.perRich * m.extract * frac;
-        if (p.ext.dur > 0 && frac <= 0) warn.push(['unlinked', pi]);
-        if (p.ext.dur <= 0) warn.push(['broken', pi]);
-      }
-      per.push({ u, frac });
-      units[p.type] += u;
-    });
-    const station = sys.station.dur > 0;
-    const pairs = station ? Math.min(units.ore, units.energy) : 0;
-    const popMult = 1 + sys.pop * E.popMult;
-    const foodForMax = (E.popMax - E.popBase) / (E.popPerFood * m.hydro);
-    const foodSurplus = Math.max(0, units.food - foodForMax);
-    let boom = null;
-    for (const e of run.events.active) if (e.type === 'boom') boom = e.res;
-    const sv = r => (boom === r ? AS.EVENTS.boom.value : m.surplus * E.surplusValue);
-    const surplus = station ? (units.ore - pairs) * sv('ore') + (units.energy - pairs) * sv('energy') + foodSurplus * sv('food') : 0;
-    let credits = pairs * E.pairValue * popMult * m.factory * (m.bulk && extractors >= 4 ? 1.1 : 1) + surplus;
-    if (station && m.tax) credits += Math.floor(sys.pop * m.tax);
-    credits *= m.income;
-    const popCap = Math.min(E.popMax, Math.round(E.popBase + units.food * E.popPerFood * m.hydro));
-    if (!station) warn.push(['station', -1]);
-    else if (units.ore > 0 && units.energy <= 0) warn.push(['noenergy', -1]);
-    else if (units.energy > 0 && units.ore <= 0) warn.push(['noore', -1]);
-    if (sys.pop > popCap) warn.push(['nofood', -1]);
-    L.forEach((l, i) => { if (l.dur <= 0) warn.push(['linebroken', i]); else if (eff[i] > 0 && eff[i] < 1) warn.push(['slow', i]); else if (l.fr <= 0) warn.push(['nofr', i]); });
-    if (sys.fdur <= 0 && sys.freighters > 0) warn.push(['fleet', -1]);
-    if (S.stormed(run, sys)) warn.push(['storm', -1]);
-    return { units, pairs, credits: U.fin(credits), surplus, popCap, popMult, per, eff, best, warn, extractors, station };
+    return 0;
   };
 
-  /* ---------- buildings & durability ---------- */
-  /** Everything in a system that has durability, with what a full repair would cost. */
-  S.buildings = function (run, sys) {
+  /* ---------- the flow solver ---------- */
+  /** What every building, conveyor, port and pathway in a system does this cycle, and why. Pure. */
+  S.sysFlow = function (run, sys) {
     const f = sys.owner >= 0 ? run.factions[sys.owner] : null;
-    const pr = w => (f ? S.price(run, f, w) : 0);
-    const out = [{ kind: 'station', idx: -1, dur: sys.station.dur, price: pr('station') }];
-    sys.planets.forEach((p, i) => { if (p.ext) out.push({ kind: 'ext', idx: i, dur: p.ext.dur, price: pr('ext') }); });
-    sys.lines.forEach((l, i) => out.push({ kind: 'line', idx: i, dur: l.dur, price: pr('line') }));
-    if (sys.freighters > 0) out.push({ kind: 'fleet', idx: -1, dur: sys.fdur, price: pr('freighter') * sys.freighters });
-    if (sys.plat.n > 0) out.push({ kind: 'plat', idx: -1, dur: sys.plat.dur, price: pr('plat') * sys.plat.n });
-    if (sys.gar.ships > 0) out.push({ kind: 'ships', idx: -1, dur: sys.gar.sdur, price: pr('ship') * sys.gar.ships });
+    const popMult = 1 + Math.min(E.popMax, sys.pop) * E.popMult;
+    const storm = S.stormed(run, sys);
+    const out = { credits: 0, alloy: 0, fuel: 0, food: 0 }, B = {}, P = {}, ports = {};
+    const capLeft = {}, pathLeft = {};
+    const procCap = E.procCap * (f ? f.mods.procCap : 1), pathCap = E.pathCap * (f ? f.mods.path : 1);
+    const portKey = (pi, pw) => pi + ':' + pw;
+    for (const pw of sys.pathways) P[pw.id] = { ab: 0, ba: 0, ok: pw.dur > 0 && !storm, cap: pathCap, res: {} };
+    sys.planets.forEach((p, pi) => {
+      for (const b of p.blds) {
+        const R = AS.BLD[b.kind];
+        B[b.id] = { pi, rate: 0, potential: 0, input: 0, output: 0, status: 'ok', reason: 'WORKING', role: R.role, res: R.res, outRate: 0 };
+        if (R.role === 'proc') capLeft[b.id] = b.dur > 0 ? procCap : 0;
+      }
+      for (const pw of S.portsOf(sys, pi)) ports[portKey(pi, pw.id)] = { out: 0, in: 0, outRes: null, inRes: null };
+    });
+    // extractors, in id order, claim processor capacity
+    const exts = [];
+    sys.planets.forEach((p, pi) => { for (const b of p.blds) if (AS.BLD[b.kind].role === 'ext') exts.push([p, pi, b]); });
+    exts.sort((a, b) => a[2].id - b[2].id);
+    for (const [p, pi, b] of exts) {
+      const st = B[b.id], res = st.res;
+      const bad = (s, r) => { st.status = s; st.reason = r; };
+      if (b.dur <= 0) { bad('broken', 'BROKEN: REPAIR'); continue; }
+      if (!b.drill) { bad('idle', 'IDLE: NO DRILL TO A DEPOSIT'); continue; }
+      if (b.drill.dur <= 0) { bad('broken', 'BROKEN DRILL: REPAIR'); continue; }
+      const dep = p.deposits[b.drill.dep];
+      if (!dep || dep.amount <= 0) { bad('empty', 'DEPOSIT EMPTY'); continue; }
+      const potential = Math.min(dep.amount, S.extRate(f, dep) * popMult);
+      st.potential = potential;
+      if (!b.out) { bad('blocked', 'BLOCKED: NO PROCESSOR CONNECTED'); continue; }
+      if (b.out.dur <= 0) { bad('broken', 'BROKEN CONVEYOR: REPAIR'); continue; }
+      let q = null, qp = null, pw = null, dir = null;
+      if (b.out.b !== undefined) { q = S.bldById(p, b.out.b); qp = p; }
+      else {
+        pw = S.pathwayById(sys, b.out.p);
+        if (!pw) { bad('blocked', 'BLOCKED: NO PROCESSOR CONNECTED'); continue; }
+        const oi = S.otherPlanet(pw, pi);
+        dir = pw.a === pi ? 'ab' : 'ba';
+        if (!P[pw.id].ok) { bad('idle', storm ? 'IDLE: SOLAR STORM ON THE PATHWAY' : 'IDLE: PATHWAY BROKEN'); continue; }
+        const link = sys.planets[oi].portIn[pw.id];
+        if (!link) { bad('blocked', 'BLOCKED: NO PROCESSOR CONNECTED AT ' + sys.planets[oi].name); continue; }
+        if (link.dur <= 0) { bad('broken', 'BROKEN CONVEYOR AT ' + sys.planets[oi].name); continue; }
+        qp = sys.planets[oi]; q = S.bldById(qp, link.b);
+      }
+      if (!q || AS.BLD[q.kind].res !== res || AS.BLD[q.kind].role !== 'proc') { bad('blocked', 'BLOCKED: NO PROCESSOR CONNECTED'); continue; }
+      if (q.dur <= 0) { bad('idle', 'IDLE: ' + AS.BLD[q.kind].name + ' IS BROKEN'); continue; }
+      let flow = Math.min(potential, capLeft[q.id]);
+      let limit = flow < potential - 1e-9 ? 'PROCESSOR FULL' : '';
+      if (pw) {
+        const k = pw.id + dir, left = pathLeft[k] === undefined ? pathCap : pathLeft[k];
+        if (left < flow) { flow = left; limit = 'PATHWAY FULL'; }
+        pathLeft[k] = left - flow;
+        P[pw.id][dir] += flow;
+        P[pw.id].res[dir] = res;
+        const po = ports[portKey(pi, pw.id)], pin = ports[portKey(S.otherPlanet(pw, pi), pw.id)];
+        po.out += flow; po.outRes = res; pin.in += flow; pin.inRes = res;
+      }
+      capLeft[q.id] -= flow;
+      st.rate = flow; st.outRate = flow;
+      B[q.id].input += flow;
+      if (flow <= 1e-9) bad('idle', 'IDLE: ' + (limit || 'PROCESSOR FULL'));
+      else if (limit) st.reason = 'WORKING: ' + limit;
+      st.dest = q.id; st.destPlanet = sys.planets.indexOf(qp); st.via = pw ? pw.id : null; st.dep = dep.id;
+    }
+    // processors
+    sys.planets.forEach((p, pi) => {
+      for (const b of p.blds) {
+        const st = B[b.id];
+        if (st.role !== 'proc') continue;
+        if (b.dur <= 0) { st.status = 'broken'; st.reason = 'BROKEN: REPAIR'; continue; }
+        if (st.input <= 1e-9) { st.status = 'idle'; st.reason = 'IDLE: NO INPUT'; continue; }
+        const v = S.convert(run, f, st.res, st.input) * S.procBonus(p, b.kind);
+        st.output = v; st.rate = st.input;
+        out[AS.RES[st.res].out] += v;
+      }
+    });
+    return { B, P, ports, out, popMult, storm };
+  };
+
+  /* ---------- durability ---------- */
+  /** Everything in a system that can be repaired, with its repair price [credits, alloy]. */
+  S.repairList = function (run, sys) {
+    const f = sys.owner >= 0 ? run.factions[sys.owner] : null, out = [];
+    const frac = d => (100 - U.clamp(d, 0, 100)) / 100 * C.dur.repairFrac;
+    const cost = (base, d) => [Math.ceil(base[0] * frac(d)), Math.ceil(base[1] * frac(d))];
+    sys.planets.forEach((p, pi) => {
+      for (const b of p.blds) {
+        const base = AS.BLD[b.kind].cost;
+        if (b.dur < 100) out.push({ kind: 'bld', pi, id: b.id, dur: b.dur, cost: cost(base, b.dur) });
+        if (b.drill && b.drill.dur < 100) out.push({ kind: 'drill', pi, id: b.id, dur: b.drill.dur, cost: cost([Math.max(10, b.drill.price), 4], b.drill.dur) });
+        if (b.out && b.out.dur < 100) out.push({ kind: 'conv', pi, id: b.id, dur: b.out.dur, cost: cost([AS.COSTS.conveyor[0], 2], b.out.dur) });
+      }
+      for (const k in p.portIn) { const l = p.portIn[k]; if (l.dur < 100) out.push({ kind: 'portconv', pi, id: +k, dur: l.dur, cost: cost([AS.COSTS.conveyor[0], 2], l.dur) }); }
+    });
+    for (const pw of sys.pathways) if (pw.dur < 100) out.push({ kind: 'pathway', pi: -1, id: pw.id, dur: pw.dur, cost: cost(AS.COSTS.pathway, pw.dur) });
+    if (sys.plat.n && sys.plat.dur < 100) out.push({ kind: 'plat', pi: -1, id: -1, dur: sys.plat.dur, cost: cost([C.equip.platCost[0] * sys.plat.n, C.equip.platCost[1] * sys.plat.n], sys.plat.dur) });
+    if (sys.gar.ships && sys.gar.sdur < 100) out.push({ kind: 'ships', pi: -1, id: -1, dur: sys.gar.sdur, cost: cost([C.equip.shipCost[0] * sys.gar.ships, C.equip.shipCost[1] * sys.gar.ships], sys.gar.sdur) });
+    void f;
     return out;
   };
-  S.repairCost = function (run, f, b) { return Math.ceil(b.price * C.dur.repairFrac * (100 - U.clamp(b.dur, 0, 100)) / 100 * f.mods.repair); };
-  S.setDur = function (sys, kind, idx, v) {
-    v = U.clamp(v, 0, 100);
-    switch (kind) {
-      case 'station': sys.station.dur = v; break;
-      case 'ext': if (sys.planets[idx] && sys.planets[idx].ext) sys.planets[idx].ext.dur = v; break;
-      case 'line': if (sys.lines[idx]) sys.lines[idx].dur = v; break;
-      case 'fleet': sys.fdur = v; break;
-      case 'plat': sys.plat.dur = v; break;
-      case 'ships': sys.gar.sdur = v; break;
+  S.setRepaired = function (sys, r) {
+    const p = r.pi >= 0 ? sys.planets[r.pi] : null;
+    const b = p ? S.bldById(p, r.id) : null;
+    switch (r.kind) {
+      case 'bld': if (b) b.dur = 100; break;
+      case 'drill': if (b && b.drill) b.drill.dur = 100; break;
+      case 'conv': if (b && b.out) b.out.dur = 100; break;
+      case 'portconv': if (p && p.portIn[r.id]) p.portIn[r.id].dur = 100; break;
+      case 'pathway': { const pw = S.pathwayById(sys, r.id); if (pw) pw.dur = 100; break; }
+      case 'plat': sys.plat.dur = 100; break;
+      case 'ships': sys.gar.sdur = 100; break;
     }
   };
-  /** Battle or raid damage to the buildings of a system. */
+  /** Battle or raid damage to everything built in a system. */
   S.damageBuildings = function (run, sys, amount, raid) {
-    const f = sys.owner >= 0 ? run.factions[sys.owner] : null;
-    const a = amount * (f ? f.mods.armour : 1);
-    if (a <= 0) return;
-    sys.station.dur = Math.max(0, sys.station.dur - a * (raid ? 0.8 : 0.6));
-    for (const p of sys.planets) if (p.ext) p.ext.dur = Math.max(0, p.ext.dur - a * (0.6 + run.rng() * 0.8));
-    for (const l of sys.lines) l.dur = Math.max(0, l.dur - a * (raid ? 1.5 : 1) * (0.6 + run.rng() * 0.8));
-    if (sys.freighters) sys.fdur = Math.max(0, sys.fdur - a * (raid ? 1.5 : 1));
+    if (amount <= 0) return;
+    const r = () => 0.6 + run.rng() * 0.8;
+    for (const p of sys.planets) {
+      for (const b of p.blds) {
+        b.dur = Math.max(0, b.dur - amount * r());
+        if (b.drill) b.drill.dur = Math.max(0, b.drill.dur - amount * 0.5 * r());
+        if (b.out) b.out.dur = Math.max(0, b.out.dur - amount * (raid ? 1.4 : 0.8) * r());
+      }
+      for (const k in p.portIn) p.portIn[k].dur = Math.max(0, p.portIn[k].dur - amount * 0.8 * r());
+    }
+    for (const pw of sys.pathways) pw.dur = Math.max(0, pw.dur - amount * (raid ? 1.5 : 0.8) * r());
+  };
+  S.wreckForCapture = function (sys) {
+    for (const p of sys.planets) {
+      for (const b of p.blds) { b.dur = 0; if (b.drill) b.drill.dur = Math.min(b.drill.dur, 40); if (b.out) b.out.dur = 0; }
+      for (const k in p.portIn) p.portIn[k].dur = 0;
+    }
+    for (const pw of sys.pathways) pw.dur = 0;
   };
 
   /* ---------- soldiers & salaries ---------- */
@@ -216,273 +233,312 @@
   };
   S.salaryFor = function (run, f, n) { return n * C.army.salary * f.mods.salary * S.eventMod(run, 'salary') * (1 + n / C.army.salaryScale); };
   S.salary = function (run, f) { return S.salaryFor(run, f, S.soldiers(run, f.id)); };
+  S.rations = (run, f, n) => n * C.army.rations * f.mods.rations;
+  S.armyFuel = function (run, f, strength, lanes) { return Math.ceil((C.army.laneFuel + Math.floor(strength / 10) * C.army.fuelPer10) * lanes * f.mods.armyFuel); };
 
-  /** Next cycle's settlement, shown at all times: income - salaries - repairs. */
+  /** Next cycle for every stock: what comes in, what goes out, and when anything runs dry. */
   S.forecast = function (run, f) {
-    let income = 0, repairs = 0;
+    const inc = { credits: 0, alloy: 0, fuel: 0, food: 0 };
+    let pop = 0, sys = 0, repairs = [0, 0];
     for (const s of run.systems) {
       if (s.owner !== f.id) continue;
-      income += S.sysYield(run, s).credits;
-      if (f.autoRepair) for (const b of S.buildings(run, s)) if (b.dur < C.dur.autoRepairAt) repairs += S.repairCost(run, f, b);
+      sys++;
+      const fl = S.sysFlow(run, s);
+      for (const k in inc) inc[k] += fl.out[k];
+      pop += s.pop;
+      if (f.autoRepair) for (const r of S.repairList(run, s)) if (r.dur < C.dur.autoRepairAt) { repairs[0] += r.cost[0]; repairs[1] += r.cost[1]; }
     }
-    const salary = S.salary(run, f);
-    return { income: Math.round(income), salary: Math.round(salary), repairs: Math.round(repairs), net: Math.round(income - salary - repairs) };
+    inc.credits = (inc.credits + C.econ.levy * sys) * f.mods.income;
+    const n = S.soldiers(run, f.id);
+    const outc = { credits: S.salaryFor(run, f, n) + repairs[0], alloy: repairs[1], fuel: S.ships(run, f.id) * C.equip.shipFuel, food: S.rations(run, f, n) + pop * E.popFood };
+    const res = {}, warn = [];
+    for (const k of AS.STOCK_KEYS) {
+      const net = inc[k] - outc[k];
+      res[k] = { in: Math.round(inc[k] * 10) / 10, out: Math.round(outc[k] * 10) / 10, net: Math.round(net * 10) / 10 };
+      const have = f[k];
+      if (net < 0) { const cyc = Math.floor(Math.max(0, have) / -net); if (cyc <= 3) warn.push({ res: k, cycles: cyc }); }
+    }
+    res.warn = warn;
+    res.salary = Math.round(S.salaryFor(run, f, n));
+    res.net = res.credits.net;
+    return res;
   };
 
-  /* ---------- the cycle: settle credits, grow population, wear buildings ---------- */
+  /* ---------- the cycle ---------- */
   S.cycle = function (run) {
     run.cycleN++;
     for (const f of run.factions) {
       if (!f.alive) continue;
-      let income = 0;
+      const got = { credits: 0, alloy: 0, fuel: 0, food: 0 };
+      let pop = 0, sys = 0;
       for (const s of run.systems) {
         if (s.owner !== f.id) continue;
-        const y = S.sysYield(run, s);
-        income += y.credits;
-        s.lastYield = { credits: Math.round(y.credits), per: y.per.map(p => Math.round(p.u * 10) / 10), t: run.t };
-        // population drifts toward what the food supports
-        const d = y.popCap - s.pop;
-        if (d !== 0) s.pop += Math.sign(d) * (Math.abs(d) > 6 ? 2 : 1);
-        s.pop = U.clamp(s.pop, 0, E.popMax);
-        if (y.credits >= 1) run.fx.push({ type: 'yield', sys: s.id, owner: f.id, v: Math.round(y.credits) });
+        sys++;
+        const fl = S.sysFlow(run, s);
+        s.flow = { t: run.t, out: fl.out };
+        // deplete the deposits by what was actually extracted
+        s.planets.forEach(p => { for (const b of p.blds) { const st = fl.B[b.id]; if (st.role === 'ext' && st.rate > 0) { const d = p.deposits[b.drill.dep]; d.amount = Math.max(0, d.amount - st.rate); } } });
+        for (const k in got) got[k] += fl.out[k];
+        if (fl.out.credits + fl.out.alloy + fl.out.fuel + fl.out.food > 0.5) run.fx.push({ type: 'yield', sys: s.id, owner: f.id, out: fl.out });
+        // population grows while the empire has food
+        if (f.food > 0 && s.pop < E.popMax) s.pop++;
+        else if (f.food <= 0 && s.pop > 0) s.pop--;
+        pop += s.pop;
       }
-      const salary = S.salary(run, f);
-      income = Math.round(income);
-      f.credits += income - Math.round(salary);
-      f.stats.income += income; f.stats.salary += Math.round(salary);
-      f.lastCycle = { income, salary: Math.round(salary), repairs: 0 };
-      // auto-repair (the player's default; AIs decide repairs themselves through actions)
+      const n = S.soldiers(run, f.id);
+      got.credits = (got.credits + E.levy * sys) * f.mods.income;
+      const salary = S.salaryFor(run, f, n), rations = S.rations(run, f, n) + pop * E.popFood, shipFuel = S.ships(run, f.id) * C.equip.shipFuel;
+      f.credits += got.credits - salary;
+      f.alloy += got.alloy;
+      f.fuel += got.fuel - shipFuel;
+      f.food += got.food - rations;
+      f.stats.income += got.credits; f.stats.salary += salary; f.stats.alloyMade += got.alloy; f.stats.fuelMade += got.fuel; f.stats.foodMade += got.food;
+      f.stats.fuelUsed += shipFuel; f.stats.foodUsed += rations;
+      f.lastCycle = { income: Math.round(got.credits), salary: Math.round(salary), got };
+      // food: hungry soldiers fight at 75%; three hungry cycles in a row and they start to desert
+      if (f.food < 0) { f.food = 0; f.hungry++; if (f.hungry === 1) run.fx.push({ type: 'hungry', owner: f.id }); if (f.hungry >= 3) S.desert(run, f, 'HUNGER'); } else f.hungry = 0;
+      // fuel: without it warships go dark and armies cannot move
+      if (f.fuel < 0) { f.fuel = 0; if (!f.noFuel) run.fx.push({ type: 'nofuel', owner: f.id }); f.noFuel = true; } else f.noFuel = f.fuel < 1 && shipFuel > 0;
+      // auto-repair (the player's default; the AI decides repairs itself)
       if (f.autoRepair) {
         const list = [];
-        for (const s of run.systems) if (s.owner === f.id) for (const b of S.buildings(run, s)) if (b.dur < C.dur.autoRepairAt) list.push([s, b]);
-        list.sort((p, q) => p[1].dur - q[1].dur);
-        for (const [s, b] of list) {
-          const c = S.repairCost(run, f, b);
-          if (c <= 0 || f.credits < c) continue;
-          f.credits -= c; f.stats.repairs += c; f.lastCycle.repairs += c;
-          S.setDur(s, b.kind, b.idx, 100);
-        }
+        for (const s of run.systems) if (s.owner === f.id) for (const r of S.repairList(run, s)) if (r.dur < C.dur.autoRepairAt) list.push([s, r]);
+        list.sort((a, b) => a[1].dur - b[1].dur);
+        for (const [s, r] of list) { if (!S.canPay(f, r.cost)) continue; pay(f, r.cost); f.stats.repairs += r.cost[0]; S.setRepaired(s, r); }
       }
-      // bankruptcy: one warning, then desertion every cycle until the books are back above zero
-      // desertion only while the books are negative AND this cycle's settlement did not cover salaries
-      if (f.credits < 0 && (income < Math.round(salary) || f.broke === 0)) {
+      // credits: one warning, then desertion every cycle the books stay negative
+      if (f.credits < 0 && (got.credits < salary || f.broke === 0)) {
         f.broke++;
         if (f.broke === 1) run.fx.push({ type: 'bankrupt', owner: f.id });
-        else S.desert(run, f);
-      } else f.broke = 0;
+        else S.desert(run, f, 'PAY');
+      } else if (f.credits >= 0) f.broke = 0;
     }
-    // wear: everything owned slowly loses durability; garrisons slowly gain veterancy
+    // wear
     for (const s of run.systems) {
       if (s.owner < 0) continue;
-      const m = run.factions[s.owner].mods, d = C.dur.decay * m.decay, dl = d * m.lineDecay, de = C.dur.equipDecay * m.decay;
-      s.station.dur = Math.max(0, s.station.dur - d);
-      for (const p of s.planets) if (p.ext) p.ext.dur = Math.max(0, p.ext.dur - d);
-      for (const l of s.lines) l.dur = Math.max(0, l.dur - dl);
-      if (s.freighters) s.fdur = Math.max(0, s.fdur - dl);
-      if (s.plat.n) s.plat.dur = Math.max(0, s.plat.dur - de);
-      if (s.gar.ships) s.gar.sdur = Math.max(0, s.gar.sdur - de);
+      const m = run.factions[s.owner].mods, d = C.dur.decay;
+      for (const p of s.planets) {
+        for (const b of p.blds) {
+          const ext = AS.BLD[b.kind].role === 'ext';
+          b.dur = Math.max(0, b.dur - d * (ext ? m.extWear : 1));
+          if (b.drill) b.drill.dur = Math.max(0, b.drill.dur - d * 0.6 * m.extWear);
+          if (b.out) b.out.dur = Math.max(0, b.out.dur - d * 0.8 * m.beltWear);
+        }
+        for (const k in p.portIn) p.portIn[k].dur = Math.max(0, p.portIn[k].dur - d * 0.8 * m.beltWear);
+      }
+      for (const pw of s.pathways) pw.dur = Math.max(0, pw.dur - d * 0.8 * m.beltWear);
+      if (s.plat.n) s.plat.dur = Math.max(0, s.plat.dur - 0.5);
+      if (s.gar.ships) s.gar.sdur = Math.max(0, s.gar.sdur - 0.5);
       if (s.gar.n) s.gar.vet = Math.min(1, s.gar.vet + C.army.vetPerCycle);
     }
-    for (const a of run.armies) { a.vet = Math.min(1, a.vet + C.army.vetPerCycle); }
+    for (const a of run.armies) a.vet = Math.min(1, a.vet + C.army.vetPerCycle);
   };
-  S.desert = function (run, f) {
+  S.desert = function (run, f, why) {
     let lost = 0;
     for (const s of run.systems) if (s.owner === f.id && s.gar.n > 0) { const k = Math.max(1, Math.ceil(s.gar.n * C.army.desertFrac)); s.gar.n -= k; lost += k; }
     for (const a of run.armies) if (a.owner === f.id && a.n > 1) { const k = Math.ceil(a.n * C.army.desertFrac); a.n -= k; lost += k; }
     f.stats.deserted += lost;
-    if (lost) run.fx.push({ type: 'desert', owner: f.id, n: lost });
-    S.logMoment(run, f.short + ': ' + lost + ' SOLDIERS DESERTED', f.id === 0 ? 'bad' : 'info', f.id);
+    if (lost) run.fx.push({ type: 'desert', owner: f.id, n: lost, why });
+    S.logMoment(run, f.short + ': ' + lost + ' SOLDIERS DESERTED (' + (why === 'HUNGER' ? 'NO FOOD' : 'NO PAY') + ')', f.id === 0 ? 'bad' : 'info', f.id);
   };
 
-  /* ---------- purchases (validated; return {ok, reason}) ---------- */
-  function own(run, fid, sysId) {
-    const s = run.systems[sysId];
-    return s && s.owner === fid ? s : null;
-  }
-  function pay(f, c) { if (f.credits < c) return false; f.credits -= c; f.stats.spent += c; return true; }
+  /* ---------- building actions (validated; return {ok, reason}) ---------- */
+  function ownSys(run, fid, sysId) { const s = run.systems[sysId]; return s && s.owner === fid ? s : null; }
+  function ownPlanet(run, fid, sysId, pi) { const s = ownSys(run, fid, sysId); return s && s.planets[pi] ? [s, s.planets[pi]] : [null, null]; }
 
-  S.buildExtractor = function (run, fid, sysId, pi) {
-    const f = run.factions[fid], s = own(run, fid, sysId);
-    if (!s) return { ok: false, reason: 'notyours' };
-    const p = s.planets[pi];
-    if (!p) return { ok: false, reason: 'invalid' };
-    if (p.ext) return { ok: false, reason: 'built' };
-    const c = S.price(run, f, 'ext');
-    if (!pay(f, c)) return { ok: false, reason: 'credits', cost: c };
-    p.ext = { dur: 100 };
-    run.fx.push({ type: 'build', sys: sysId, owner: fid, planet: pi });
-    return { ok: true, cost: c };
+  S.placeBuilding = function (run, fid, sysId, pi, slot, kind) {
+    const f = run.factions[fid], [s, p] = ownPlanet(run, fid, sysId, pi);
+    if (!p) return { ok: false, reason: 'notyours' };
+    if (!AS.BLD[kind]) return { ok: false, reason: 'invalid' };
+    if (!(slot >= 0 && slot < S.slotCount(p, f)) || slot !== Math.floor(slot)) return { ok: false, reason: 'slot' };
+    if (S.bldAt(p, slot)) return { ok: false, reason: 'slotused' };
+    const c = S.bldCost(f, kind);
+    if (!pay(f, c)) return short(c);
+    const b = { id: run.nextId++, slot, kind, dur: 100, drill: null, out: null };
+    p.blds.push(b);
+    run.fx.push({ type: 'build', sys: sysId, owner: fid, planet: pi, bld: b.id, kind });
+    return { ok: true, bld: b, cost: c };
   };
-  /** Drag from node a to node b (node -1 is the station). Extends a line that ends at a, else draws a new line. */
-  S.drawLine = function (run, fid, sysId, a, b) {
-    const f = run.factions[fid], s = own(run, fid, sysId);
-    if (!s) return { ok: false, reason: 'notyours' };
-    const valid = n => n === -1 || (n >= 0 && n < s.planets.length);
-    if (!valid(a) || !valid(b) || a === b) return { ok: false, reason: 'invalid' };
-    if (s.lines.some(l => { const i = l.stops.indexOf(a), j = l.stops.indexOf(b); return i >= 0 && j >= 0 && Math.abs(i - j) === 1; })) return { ok: false, reason: 'linked' };
-    // extend: a line whose end is a and which does not already visit b
-    // from the station, a free line slot means a new line; otherwise extend the line that ends at a
-    const fromStationNew = a === -1 && s.lines.length < S.lineSlots(run, s);
-    const ext = fromStationNew ? null : s.lines.find(l => (l.stops[l.stops.length - 1] === a || l.stops[0] === a) && l.stops.indexOf(b) < 0);
-    if (ext) {
-      if (ext.stops.length >= 5) return { ok: false, reason: 'long' };
-      if (ext.stops[ext.stops.length - 1] === a) ext.stops.push(b); else ext.stops.unshift(b);
-      run.fx.push({ type: 'line', sys: sysId, owner: fid, line: ext.id });
-      return { ok: true, line: ext, extended: true, cost: 0 };
+  S.drill = function (run, fid, sysId, pi, bldId, path) {
+    const f = run.factions[fid], [s, p] = ownPlanet(run, fid, sysId, pi);
+    if (!p) return { ok: false, reason: 'notyours' };
+    const b = S.bldById(p, bldId);
+    if (!b) return { ok: false, reason: 'invalid' };
+    if (b.drill) return { ok: false, reason: 'drilled' };
+    const chk = S.checkDrill(f, p, b, path);
+    if (!chk.ok) return chk;
+    const c = [chk.cost, 0];
+    if (!pay(f, c)) return short(c);
+    b.drill = { path: path.slice(), dep: chk.dep.id, dur: 100, price: chk.cost };
+    run.fx.push({ type: 'drill', sys: sysId, owner: fid, planet: pi, bld: b.id });
+    return { ok: true, cost: c, dep: chk.dep };
+  };
+  /** Conveyor. from: {b} extractor or {p} port; to: {b} processor or {p} port. */
+  S.connect = function (run, fid, sysId, pi, from, to) {
+    const f = run.factions[fid], [s, p] = ownPlanet(run, fid, sysId, pi);
+    if (!p || !from || !to) return { ok: false, reason: 'notyours' };
+    const c = AS.COSTS.conveyor;
+    if (from.b !== undefined) {
+      const b = S.bldById(p, from.b);
+      if (!b || AS.BLD[b.kind].role !== 'ext') return { ok: false, reason: 'fromext' };
+      if (b.out) return { ok: false, reason: 'connected' };
+      if (to.b !== undefined) {
+        const q = S.bldById(p, to.b);
+        if (!q || AS.BLD[q.kind].role !== 'proc') return { ok: false, reason: 'toproc' };
+        if (AS.BLD[q.kind].res !== AS.BLD[b.kind].res) return { ok: false, reason: 'wrongres' };
+        if (!pay(f, c)) return short(c);
+        b.out = { b: q.id, dur: 100 };
+      } else if (to.p !== undefined) {
+        const pw = S.pathwayById(s, to.p);
+        if (!pw || (pw.a !== pi && pw.b !== pi)) return { ok: false, reason: 'noport' };
+        if (!pay(f, c)) return short(c);
+        b.out = { p: pw.id, dur: 100 };
+      } else return { ok: false, reason: 'invalid' };
+      run.fx.push({ type: 'conveyor', sys: sysId, owner: fid, planet: pi, bld: b.id });
+      return { ok: true, cost: c };
     }
-    if (s.lines.length >= S.lineSlots(run, s)) return { ok: false, reason: 'slots' };
-    const c = S.price(run, f, 'line');
-    if (!pay(f, c)) return { ok: false, reason: 'credits', cost: c };
-    const l = { id: s.nextLine++, stops: [a, b], fr: 0, dur: 100 };
-    s.lines.push(l);
-    if (S.freeFreighters(s) > 0) l.fr = 1;
-    run.fx.push({ type: 'line', sys: sysId, owner: fid, line: l.id });
-    return { ok: true, line: l, cost: c };
+    if (from.p !== undefined && to.b !== undefined) {
+      const pw = S.pathwayById(s, from.p);
+      if (!pw || (pw.a !== pi && pw.b !== pi)) return { ok: false, reason: 'noport' };
+      const q = S.bldById(p, to.b);
+      if (!q || AS.BLD[q.kind].role !== 'proc') return { ok: false, reason: 'toproc' };
+      if (p.portIn[pw.id]) return { ok: false, reason: 'connected' };
+      if (!pay(f, c)) return short(c);
+      p.portIn[pw.id] = { b: q.id, dur: 100 };
+      run.fx.push({ type: 'conveyor', sys: sysId, owner: fid, planet: pi, port: pw.id });
+      return { ok: true, cost: c };
+    }
+    return { ok: false, reason: 'invalid' };
   };
-  S.lineById = (s, id) => s.lines.find(l => l.id === id) || null;
-  S.removeLine = function (run, fid, sysId, lineId) {
-    const f = run.factions[fid], s = own(run, fid, sysId);
-    const l = s && S.lineById(s, lineId);
-    if (!l) return { ok: false, reason: 'invalid' };
-    s.lines = s.lines.filter(x => x !== l);
-    const back = Math.round(S.price(run, f, 'line') * 0.5);
+  /** Remove the conveyor leaving an extractor, or the one leaving a port. */
+  S.disconnect = function (run, fid, sysId, pi, from) {
+    const [s, p] = ownPlanet(run, fid, sysId, pi);
+    if (!p || !from) return { ok: false, reason: 'notyours' };
+    if (from.b !== undefined) { const b = S.bldById(p, from.b); if (!b || !b.out) return { ok: false, reason: 'invalid' }; b.out = null; return { ok: true }; }
+    if (from.p !== undefined) { if (!p.portIn[from.p]) return { ok: false, reason: 'invalid' }; delete p.portIn[from.p]; return { ok: true }; }
+    void s;
+    return { ok: false, reason: 'invalid' };
+  };
+  S.demolish = function (run, fid, sysId, pi, bldId) {
+    const f = run.factions[fid], [s, p] = ownPlanet(run, fid, sysId, pi);
+    if (!p) return { ok: false, reason: 'notyours' };
+    const b = S.bldById(p, bldId);
+    if (!b) return { ok: false, reason: 'invalid' };
+    p.blds = p.blds.filter(x => x !== b);
+    for (const x of p.blds) if (x.out && x.out.b === b.id) x.out = null;
+    for (const k in p.portIn) if (p.portIn[k].b === b.id) delete p.portIn[k];
+    const back = Math.round(AS.BLD[b.kind].cost[0] * 0.4);
     f.credits += back;
-    run.fx.push({ type: 'unline', sys: sysId, owner: fid });
+    run.fx.push({ type: 'demolish', sys: sysId, owner: fid, planet: pi });
+    void s;
     return { ok: true, refund: back };
   };
-  /** Trim the last stop off a line (a line needs at least two stops). */
-  S.trimLine = function (run, fid, sysId, lineId) {
-    const s = own(run, fid, sysId), l = s && S.lineById(s, lineId);
-    if (!l) return { ok: false, reason: 'invalid' };
-    if (l.stops.length <= 2) return S.removeLine(run, fid, sysId, lineId);
-    l.stops.pop();
+  S.openPathway = function (run, fid, sysId, a, b) {
+    const f = run.factions[fid], s = ownSys(run, fid, sysId);
+    if (!s) return { ok: false, reason: 'notyours' };
+    if (a === b || !s.planets[a] || !s.planets[b]) return { ok: false, reason: 'invalid' };
+    if (s.pathways.some(pw => (pw.a === a && pw.b === b) || (pw.a === b && pw.b === a))) return { ok: false, reason: 'linked' };
+    if (s.pathways.length >= S.pathwaySlots(run, s)) return { ok: false, reason: 'pathways' };
+    const c = AS.COSTS.pathway;
+    if (!pay(f, c)) return short(c);
+    const pw = { id: run.nextId++, a, b, dur: 100 };
+    s.pathways.push(pw);
+    run.fx.push({ type: 'pathway', sys: sysId, owner: fid, pw: pw.id });
+    return { ok: true, pathway: pw, cost: c };
+  };
+  S.closePathway = function (run, fid, sysId, pwId) {
+    const f = run.factions[fid], s = ownSys(run, fid, sysId);
+    const pw = s && S.pathwayById(s, pwId);
+    if (!pw) return { ok: false, reason: 'invalid' };
+    s.pathways = s.pathways.filter(x => x !== pw);
+    for (const p of s.planets) {
+      for (const b of p.blds) if (b.out && b.out.p === pw.id) b.out = null;
+      delete p.portIn[pw.id];
+    }
+    f.credits += Math.round(AS.COSTS.pathway[0] * 0.5);
     return { ok: true };
   };
-  S.lineFreighter = function (run, fid, sysId, lineId, d) {
-    const f = run.factions[fid], s = own(run, fid, sysId), l = s && S.lineById(s, lineId);
-    if (!l) return { ok: false, reason: 'invalid' };
-    if (d > 0) {
-      if (S.freeFreighters(s) <= 0) {
-        const r = S.buyFreighter(run, fid, sysId, true);
-        if (!r.ok) return r;
-      }
-      l.fr++;
-      return { ok: true };
-    }
-    if (l.fr <= 0) return { ok: false, reason: 'none' };
-    l.fr--;
-    return { ok: true };
-  };
-  S.buyFreighter = function (run, fid, sysId, noAssign) {
-    const f = run.factions[fid], s = own(run, fid, sysId);
+  /** Repair one thing (kind/pi/id as in S.repairList), or with kind 'all' everything affordable in the system. */
+  S.repair = function (run, fid, sysId, kind, pi, id) {
+    const f = run.factions[fid], s = ownSys(run, fid, sysId);
     if (!s) return { ok: false, reason: 'notyours' };
-    if (s.freighters >= E.maxFreighters) return { ok: false, reason: 'maxfr' };
-    const c = S.price(run, f, 'freighter');
-    if (!pay(f, c)) return { ok: false, reason: 'credits', cost: c };
-    s.fdur = s.freighters ? (s.fdur * s.freighters + 100) / (s.freighters + 1) : 100;
-    s.freighters++;
-    if (!noAssign) {   // joins the line that needs it most
-      let best = null, need = 0;
-      for (const l of s.lines) { const n = (l.stops.length - 1) / f.mods.reach - l.fr; if (n > need) { need = n; best = l; } }
-      if (best) best.fr++;
-    }
-    run.fx.push({ type: 'buy', sys: sysId, owner: fid });
-    return { ok: true, cost: c };
-  };
-  S.repair = function (run, fid, sysId, kind, idx) {
-    const f = run.factions[fid], s = own(run, fid, sysId);
-    if (!s) return { ok: false, reason: 'notyours' };
-    const b = S.buildings(run, s).find(x => x.kind === kind && x.idx === idx);
-    if (!b) return { ok: false, reason: 'invalid' };
-    const c = S.repairCost(run, f, b);
-    if (c <= 0) return { ok: false, reason: 'fine' };
-    if (!pay(f, c)) return { ok: false, reason: 'credits', cost: c };
-    f.stats.repairs += c;
-    S.setDur(s, kind, idx, 100);
-    run.fx.push({ type: 'repair', sys: sysId, owner: fid });
-    return { ok: true, cost: c };
-  };
-  S.repairAllCost = function (run, f, s) { let c = 0; for (const b of S.buildings(run, s)) c += S.repairCost(run, f, b); return c; };
-  S.repairAll = function (run, fid, sysId) {
-    const f = run.factions[fid], s = own(run, fid, sysId);
-    if (!s) return { ok: false, reason: 'notyours' };
-    const list = S.buildings(run, s).filter(b => b.dur < 100).sort((p, q) => p.dur - q.dur);
+    const list = S.repairList(run, s).filter(r => kind === 'all' || (r.kind === kind && r.pi === pi && r.id === id)).sort((a, b) => a.dur - b.dur);
     if (!list.length) return { ok: false, reason: 'fine' };
-    let spent = 0, n = 0;
-    for (const b of list) {
-      const c = S.repairCost(run, f, b);
-      if (c <= 0 || f.credits < c) continue;
-      f.credits -= c; spent += c; n++;
-      S.setDur(s, b.kind, b.idx, 100);
+    let n = 0, spent = [0, 0];
+    for (const r of list) {
+      if (!S.canPay(f, r.cost)) continue;
+      pay(f, r.cost); spent[0] += r.cost[0]; spent[1] += r.cost[1]; n++;
+      S.setRepaired(s, r);
     }
-    if (!n) return { ok: false, reason: 'credits', cost: S.repairCost(run, f, list[0]) };
-    f.stats.repairs += spent; f.stats.spent += spent;
-    run.fx.push({ type: 'repair', sys: sysId, owner: fid });
+    if (!n) return short(list[0].cost);
+    f.stats.repairs += spent[0];
+    run.fx.push({ type: 'repair', sys: sysId, owner: fid, planet: pi, bld: id });
     return { ok: true, cost: spent, n };
   };
-  S.buyShip = function (run, fid, sysId) {
-    const f = run.factions[fid], s = own(run, fid, sysId);
+
+  /* ---------- military purchases ---------- */
+  S.recruit = function (run, fid, sysId, n) {
+    const f = run.factions[fid], s = ownSys(run, fid, sysId);
     if (!s) return { ok: false, reason: 'notyours' };
-    const c = S.price(run, f, 'ship');
-    if (!pay(f, c)) return { ok: false, reason: 'credits', cost: c };
+    n = Math.max(1, Math.min(n || C.army.batch, C.army.maxQueue - s.train.q));
+    if (s.train.q >= C.army.maxQueue) return { ok: false, reason: 'queue' };
+    const c = [Math.round(C.army.recruitCost * n * S.eventMod(run, 'salary')), 0];
+    if (!pay(f, c)) return short(c);
+    s.train.q += n;
+    run.fx.push({ type: 'recruit', sys: sysId, owner: fid, n });
+    return { ok: true, n, cost: c };
+  };
+  S.cancelRecruit = function (run, fid, sysId) {
+    const s = ownSys(run, fid, sysId);
+    if (!s || s.train.q <= 0) return { ok: false, reason: 'queue' };
+    s.train.q = 0; s.train.prog = 0;
+    return { ok: true };
+  };
+  S.buyShip = function (run, fid, sysId) {
+    const f = run.factions[fid], s = ownSys(run, fid, sysId);
+    if (!s) return { ok: false, reason: 'notyours' };
+    const c = C.equip.shipCost;
+    if (!pay(f, c)) return short(c);
     s.gar.sdur = s.gar.ships ? (s.gar.sdur * s.gar.ships + 100) / (s.gar.ships + 1) : 100;
     s.gar.ships++;
     run.fx.push({ type: 'ship', sys: sysId, owner: fid });
     return { ok: true, cost: c };
   };
   S.buyPlatform = function (run, fid, sysId) {
-    const f = run.factions[fid], s = own(run, fid, sysId);
+    const f = run.factions[fid], s = ownSys(run, fid, sysId);
     if (!s) return { ok: false, reason: 'notyours' };
     if (s.plat.n >= C.equip.maxPlatforms) return { ok: false, reason: 'maxplat' };
-    const c = S.price(run, f, 'plat');
-    if (!pay(f, c)) return { ok: false, reason: 'credits', cost: c };
+    const c = C.equip.platCost;
+    if (!pay(f, c)) return short(c);
     s.plat.dur = s.plat.n ? (s.plat.dur * s.plat.n + 100) / (s.plat.n + 1) : 100;
     s.plat.n++;
     run.fx.push({ type: 'plat', sys: sysId, owner: fid });
     return { ok: true, cost: c };
   };
-  S.recruit = function (run, fid, sysId, n) {
-    const s = own(run, fid, sysId);
-    if (!s) return { ok: false, reason: 'notyours' };
-    n = Math.max(1, Math.min(n || C.army.batch, C.army.maxQueue - s.train.q));
-    if (n <= 0 || s.train.q >= C.army.maxQueue) return { ok: false, reason: 'queue' };
-    s.train.q += n;
-    run.fx.push({ type: 'recruit', sys: sysId, owner: fid, n });
-    return { ok: true, n };
-  };
-  S.cancelRecruit = function (run, fid, sysId) {
-    const s = own(run, fid, sysId);
-    if (!s || s.train.q <= 0) return { ok: false, reason: 'queue' };
-    s.train.q = 0; s.train.prog = 0;
-    return { ok: true };
-  };
+  S.buyPrice = function (run, f, sys) { return Math.round(C.buy.base * Math.pow(C.buy.growth, S.ownCount(run, f.id)) + C.buy.perGarrison * sys.gar.n); };
   S.buySystem = function (run, fid, sysId) {
     const f = run.factions[fid], s = run.systems[sysId];
     if (!s || s.owner !== -1) return { ok: false, reason: 'notneutral' };
     if (s.battle) return { ok: false, reason: 'battle' };
     if (!S.neighbours(run, sysId).some(n => run.systems[n].owner === fid)) return { ok: false, reason: 'notadjacent' };
-    const c = S.buyPrice(run, f, s);
-    if (!pay(f, c)) return { ok: false, reason: 'credits', cost: c };
-    s.owner = fid;
-    s.gar.n = 0; s.gar.vet = 0; s.gar.ships = 0; s.train.q = 0;
-    s.lastCaptured = run.t;
+    if (run.coalition && run.coalition.target === fid && run.t < run.coalition.until) return { ok: false, reason: 'sanction' };
+    const c = [S.buyPrice(run, f, s), 0];
+    if (!pay(f, c)) return short(c);
+    s.owner = fid; s.gar.n = 0; s.gar.vet = 0; s.gar.ships = 0; s.train.q = 0; s.lastCaptured = run.t;
     f.stats.bought++;
     run.fx.push({ type: 'bought', sys: sysId, owner: fid });
     S.logMoment(run, f.short + ' BOUGHT ' + s.name, fid === 0 ? 'good' : 'info', fid);
     return { ok: true, cost: c };
   };
-
-  /** Soldiers in training join the garrison one at a time. */
   S.stepTraining = function (run, dt) {
     for (const s of run.systems) {
       if (s.owner < 0 || s.train.q <= 0) continue;
-      const f = run.factions[s.owner];
-      s.train.prog += dt * f.mods.train * S.eventMod(run, 'train');
+      s.train.prog += dt * S.eventMod(run, 'train');
       while (s.train.prog >= C.army.trainTime && s.train.q > 0) {
         s.train.prog -= C.army.trainTime;
         s.train.q--;
         const g = s.gar;
-        g.vet = U.safeDiv(g.vet * g.n + f.mods.vetStart, g.n + 1, 0);
+        g.vet = U.safeDiv(g.vet * g.n, g.n + 1, 0);
         g.n++;
       }
       if (s.train.q <= 0) s.train.prog = 0;

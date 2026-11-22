@@ -1,7 +1,7 @@
-/* ATLAS SYNDICATE v5 — ui/screens.js
+/* ATLAS SYNDICATE v6 — ui/screens.js
    Every menu screen, drawn in-canvas with the pixel fonts (v4's panel, card and chart code):
-   title, new game, corporation choice, settings, achievements, how to play, code entry, pause,
-   the card draft and the end-of-run report. */
+   title, new game, the upgrade shop, settings, achievements, how to play, code entry, pause,
+   and the end-of-run report. */
 (function (AS) {
   'use strict';
 
@@ -85,7 +85,8 @@
     AS.Font.logo(ctx, 'SYNDICATE', cx, ly + 8 * sc + 4, Math.max(2, sc - 1), [7, 7, 6, 6, 5, 5, 4]);
     const ry = ly + 8 * sc + 4 + 8 * Math.max(2, sc - 1) + 6;
     D.hazard(ctx, Math.round(cx - 90), ry, 180, 3, 13, G.time * 6);
-    TS(ctx, 'BUILD SUPPLY LINES. RAISE AN ARMY.', cx, ry + 7, 7, 'center');
+    TS(ctx, 'DRILL. REFINE. RAISE AN ARMY.', cx, ry + 7, 7, 'center');
+    if (G.oldSaveMsg) T(ctx, 'YOUR SAVE FROM AN OLDER VERSION WAS REMOVED', cx, ry + 25, 17, { align: 'center' });
     TS(ctx, 'TAKE THE GALAXY FROM FIVE AI RIVALS.', cx, ry + 15, 5, 'center');
     const save = G.saveInfo;
     const items = [];
@@ -120,35 +121,21 @@
     G.button(ctx, p.x + p.w - 88, p.y + p.h - 18, 80, 13, 'BACK', () => { AS.Sfx.play('click'); Sc.back(); });
   }
 
-  /* ---------- corporation (start of a run, over the galaxy) ---------- */
-  function drawCorp(ctx) {
-    const run = G.run;
-    if (!run) { Sc.close(); return; }
-    const offers = S.corpOffers(run.seed);
-    const p = panel(ctx, 450, 128, 'CHOOSE YOUR CORPORATION', 'ONE STRONG ABILITY FOR THE WHOLE GAME  -  ' + AS.DIFFICULTY[run.diff].name, true);
-    const cw = Math.floor((p.w - 24) / 3);
-    offers.forEach((key, i) => {
-      const Cp = AS.CORPS[key], x = p.x + 8 + i * (cw + 4);
-      card(ctx, x, p.y + 30, cw, 80, '[' + (i + 1) + ']', Cp.name, Cp.desc, '', 13, () => Sc.pickCorp(key), i);
-    });
-  }
-  Sc.pickCorp = function (key) { G.pendingCorp = key; G.run.phase = 'home'; Sc.close(); G.showToast('NOW CLICK A FLASHING SYSTEM IN THE OUTER ARMS: YOUR HOME', 13); };
-
   /* ---------- settings ---------- */
   function drawSettings(ctx) {
-    const p = panel(ctx, 300, 200, 'SETTINGS');
+    const p = panel(ctx, 320, 222, 'SETTINGS');
     const s = G.settings;
     let y = p.y + 26;
-    const row = (label, value, fn, tip) => { TS(ctx, label, p.x + 14, y + 3, 7); G.button(ctx, p.x + p.w - 104, y, 90, 11, value, () => { AS.Sfx.play('click'); fn(); }, { tip }); y += 14; };
+    const row = (label, value, fn, tip) => { T(ctx, label, p.x + 14, y + 3, 7, { big: true }); G.button(ctx, p.x + p.w - 114, y, 100, 13, value, () => { AS.Sfx.play('click'); fn(); }, { tip }); y += 16; };
     const vol = (label, key) => {
-      TS(ctx, label, p.x + 14, y + 3, 7);
-      const bx = p.x + p.w - 104;
+      T(ctx, label, p.x + 14, y + 3, 7, { big: true });
+      const bx = p.x + p.w - 114;
       G.button(ctx, bx, y, 12, 11, '-', () => { s[key] = Math.max(0, Math.round((s[key] - 0.1) * 10) / 10); Act.saveSettings(); AS.Sfx.play('click'); });
       D.bar(ctx, bx + 14, y + 2, 62, 7, s[key], 12);
       G.button(ctx, bx + 78, y, 12, 11, '+', () => { s[key] = Math.min(1, Math.round((s[key] + 0.1) * 10) / 10); Act.saveSettings(); AS.Sfx.play('click'); });
-      y += 14;
+      y += 16;
     };
-    row('PIXEL SIZE', { large: 'LARGE', medium: 'MEDIUM', small: 'SMALL' }[s.uiScale], () => { s.uiScale = s.uiScale === 'large' ? 'medium' : s.uiScale === 'medium' ? 'small' : 'large'; Act.saveSettings(); G.layout(); }, 'UI SCALE. SMALLER PIXELS SHOW MORE OF THE MAP.');
+    row('UI SCALE', s.uiScale + '%' + (G.scale ? '  (X' + G.scale + ')' : ''), () => { const L = G.UI_SCALES; s.uiScale = L[(L.indexOf(s.uiScale) + 1) % L.length]; Act.saveSettings(); G.layout(); }, 'HOW BIG EVERYTHING IS: 100, 125, 150 OR 200%. PIXELS STAY WHOLE, SO EACH STEP ROUNDS TO THE NEAREST WHOLE PIXEL SIZE THAT FITS THIS SCREEN.');
     row('SCREEN SHAKE', s.shake ? 'ON' : 'OFF', () => { s.shake = !s.shake; Act.saveSettings(); });
     row('TIPS', s.tips ? 'ON' : 'OFF', () => { s.tips = !s.tips; s.tipsSet = true; Act.saveSettings(); }, 'HOVER TOOLTIPS ON EVERY ELEMENT.');
     vol('MUSIC VOLUME', 'music');
@@ -158,8 +145,8 @@
     // saved games: two clicks (DELETE, then CONFIRM within 3 s) so a stray click never wipes a game
     const hasSave = Act.hasSave(), arm = G.delArm && G.time < G.delArm;
     const inGame = G.mode === 'play' && G.run && !G.run.over;
-    TS(ctx, 'SAVED GAME', p.x + 14, y + 3, 7);
-    G.button(ctx, p.x + p.w - 104, y, 90, 11, arm ? 'CONFIRM?' : hasSave ? 'DELETE' : 'NONE', () => {
+    T(ctx, 'SAVED GAME', p.x + 14, y + 3, 7, { big: true });
+    G.button(ctx, p.x + p.w - 114, y, 100, 13, arm ? 'CONFIRM?' : hasSave ? 'DELETE' : 'NONE', () => {
       if (!arm) { G.delArm = G.time + 3; AS.Sfx.play('warning'); return; }
       G.delArm = 0;
       Act.deleteSaves();
@@ -189,22 +176,22 @@
 
   /* ---------- how to play ---------- */
   function drawHelp(ctx) {
-    const p = panel(ctx, 470, 250, 'HOW TO PLAY');
+    const p = panel(ctx, 490, 250, 'HOW TO PLAY');
     const L = [
       ['GOAL', 'ELIMINATE EVERY RIVAL, OR HOLD THE MOST SYSTEMS AT 30:00. LOSE YOUR CAPITAL AND YOU LOSE.'],
-      ['', 'TAKING A RIVAL CAPITAL ELIMINATES THAT RIVAL AND HANDS YOU ALL ITS SYSTEMS.'],
-      ['SYSTEM', 'CLICK YOUR SYSTEM. CLICK PLANETS TO BUILD EXTRACTORS. DRAG STATION > PLANET > PLANET FOR LINES.'],
-      ['', 'ORE + ENERGY AT THE FACTORY = CREDITS. FOOD GROWS POPULATION, WHICH MULTIPLIES OUTPUT.'],
-      ['', 'ONLY COMPLETE CHAINS PAY. A LINE NEEDS ONE FREIGHTER PER STOP AFTER THE FIRST.'],
-      ['MONEY', 'EVERY 10 S: INCOME - SALARIES - REPAIRS. NET IS AT THE TOP. BROKE = WARNING, THEN DESERTION.'],
-      ['', 'BUILDINGS WEAR OUT AND STOP AT 0%. REPAIR THEM, OR LEAVE AUTO-REPAIR ON.'],
-      ['WAR', 'DRAG FROM YOUR SYSTEM ONTO A NEIGHBOUR. SEE THE ODDS, PICK HOW MANY, ATTACK OR RAID.'],
-      ['', 'NOBODY CAN ATTACK BEFORE 4:00. DEFENDERS GET +20%. VETERANS ARE STRONGER: DON\'T WASTE THEM.'],
-      ['', 'WARNINGS (TOP LEFT) SHOW RIVALS MASSING ON YOUR BORDER. CARDS EVERY 3 MIN AND AFTER CAPTURES.'],
-      ['KEYS', 'SPACE PAUSE (ORDERS STILL WORK)  1 2 3 SPEED  ESC BACK/MENU  WASD PAN  Q/E ZOOM  T TIPS  M MUTE'],
-      ['TOUCH', 'TAP = CLICK. DRAG = PAN OR DRAW. PINCH = ZOOM.'],
+      ['VIEWS', 'GALAXY > SYSTEM > PLANET. CLICK YOUR SYSTEM, THEN A PLANET. ESC GOES BACK.'],
+      ['PLANET', 'CLICK AN EMPTY SLOT: BUILD. DRAG DOWN FROM AN EXTRACTOR TO A DEPOSIT: DRILL (BARRIERS CANNOT BE DRILLED).'],
+      ['', 'DRAG AN EXTRACTOR ACROSS TO ITS PROCESSOR: CONVEYOR. METAL > SMELTER = ALLOY. GOLD > MINT = CREDITS.'],
+      ['', 'ICE > WATER PLANT = FOOD. CRUDE > REFINERY = FUEL. PROCESSORS WORK 50% BETTER ON MATCHING PLANETS.'],
+      ['SYSTEM', 'DRAG PLANET > PLANET: PATHWAY. EACH END GETS A PORT: SEND RAW RESOURCES TO WHERE THERE IS ROOM.'],
+      ['STOCKS', 'CREDITS PAY SALARIES. FOOD FEEDS SOLDIERS. FUEL MOVES ARMIES. ALLOY BUILDS AND REPAIRS.'],
+      ['', 'EVERYTHING WEARS OUT; DEPOSITS RUN DRY. THE SHOP (U) SELLS PERMANENT UPGRADES.'],
+      ['WAR', 'DRAG FROM YOUR SYSTEM ONTO A NEIGHBOUR: SEE THE ODDS AND FUEL, PICK HOW MANY, ATTACK OR RAID.'],
+      ['', 'NOBODY ATTACKS BEFORE 4:00. ANYONE AT 35% FACES A COALITION OF EVERYONE ELSE.'],
+      ['KEYS', 'SPACE PAUSE  1 2 3 SPEED  ESC BACK  U SHOP  WASD PAN  Q/E ZOOM  T TIPS  M MUTE  F9 JUMP TO 15:00'],
+      ['TOUCH', 'TAP = CLICK. DRAG = PAN, DRILL OR CONNECT. PINCH = ZOOM.'],
     ];
-    L.forEach(([h, t], i) => { const y = p.y + 26 + i * 15; if (h) T(ctx, h, p.x + 12, y, 12); TS(ctx, t, p.x + 58, y, 7); });
+    L.forEach(([h, t], i) => { const y = p.y + 26 + i * 15; if (h) T(ctx, h, p.x + 12, y, 12, { big: true }); TS(ctx, t, p.x + 62, y + 1, 7); });
     backBtn(ctx, p);
   }
 
@@ -213,7 +200,7 @@
     const p = panel(ctx, 290, 110, 'ENTER CODE', 'A SHARE CODE FROM AN END REPORT, OR A SEED NUMBER');
     drawField(ctx, p.x + 30, p.y + 38, p.w - 60);
     const parsed = U.parseCode(G.focusField ? G.focusField.value : '');
-    if (parsed) TS(ctx, 'SEED ' + parsed.seed + (parsed.corp ? ' - ' + AS.CORPS[parsed.corp].name : '') + ' - ' + AS.DIFFICULTY[parsed.diff].name, G.W / 2, p.y + 60, 13, 'center');
+    if (parsed) TS(ctx, 'SEED ' + parsed.seed + ' - ' + AS.DIFFICULTY[parsed.diff].name, G.W / 2, p.y + 60, 13, 'center');
     else if (G.focusField && G.focusField.value) TS(ctx, 'NOT A VALID CODE YET', G.W / 2, p.y + 60, 17, 'center');
     G.button(ctx, p.x + 30, p.y + p.h - 22, 100, 14, 'PLAY', () => Sc.startCode(G.focusField ? G.focusField.value : ''), { primary: !!parsed, disabled: !parsed });
     G.button(ctx, p.x + p.w - 130, p.y + p.h - 22, 100, 14, 'BACK', () => { AS.Sfx.play('click'); Sc.back(); });
@@ -221,7 +208,7 @@
   Sc.startCode = function (v) {
     const c = U.parseCode(v);
     if (!c) { AS.Sfx.play('err'); return; }
-    AS.Main.newRun(c.seed, c.diff, c.corp);
+    AS.Main.newRun(c.seed, c.diff);
   };
 
   /* ---------- pause ---------- */
@@ -232,25 +219,35 @@
       ['RESUME', () => Sc.close(), { primary: true }],
       ['SETTINGS', () => Sc.open('settings'), {}],
       ['HOW TO PLAY', () => Sc.open('help'), {}],
-      ['RESTART THIS GALAXY', () => AS.Main.newRun(run.seed, run.diff, run.factions[0].corp), {}],
+      ['RESTART THIS GALAXY', () => AS.Main.newRun(run.seed, run.diff), {}],
       ['SAVE AND QUIT TO MENU', () => AS.Main.toMenu(true), {}],
     ];
     items.forEach(([l, fn, o], i) => G.button(ctx, p.x + 30, p.y + 30 + i * 18, p.w - 60, 14, l, () => { AS.Sfx.play('click'); fn(); }, o));
   }
 
-  /* ---------- card draft ---------- */
-  function drawDraft(ctx) {
+  /* ---------- the upgrade shop ---------- */
+  function drawShop(ctx) {
     const run = G.run, f = run && run.factions[0];
-    if (!f || !f.drafts.length) { Sc.close(); return; }
-    const d = f.drafts[0];
-    const p = panel(ctx, 460, 122, 'DRAFT A CARD', (d.why === 'capture' ? 'FOR CAPTURING A RIVAL SYSTEM' : 'EVERY 3 MINUTES') + '  -  KEYS 1-3  -  TIME IS PAUSED' + (f.drafts.length > 1 ? '  -  ' + f.drafts.length + ' WAITING' : ''));
-    const cw = Math.floor((p.w - 24) / 3);
-    d.offers.forEach((key, i) => {
-      const c = AS.CARDS[key], cat = AS.CARD_CATS[c.cat], x = p.x + 8 + i * (cw + 4);
-      const syn = AS.CARD_SYNERGY.filter(([a, b]) => (a === key && f.cards.indexOf(b) >= 0) || (b === key && f.cards.indexOf(a) >= 0)).map(([a, b]) => AS.CARDS[a === key ? b : a].name);
-      card(ctx, x, p.y + 30, cw, 74, '[' + (i + 1) + ']', c.name, c.desc, syn.length ? 'COMBOS WITH ' + syn[0] : '', cat[1], () => Act.pickCard(key), i, cat[0]);
+    if (!f) { Sc.close(); return; }
+    const p = panel(ctx, Math.min(G.W - 8, 520), Math.min(G.H - 8, 230), 'UPGRADE SHOP', 'PERMANENT. BOUGHT IN ORDER ALONG EACH TRACK. TIME KEEPS RUNNING. YOU HAVE ' + Math.floor(f.credits) + ' CR, ' + Math.floor(f.alloy) + ' ALLOY');
+    const cw = Math.floor((p.w - 20) / 4), rh = Math.floor((p.h - 54) / 5);
+    AS.UPG_TRACKS.forEach((t, ti) => {
+      const T2 = AS.UPGRADES[t], x = p.x + 8 + ti * (cw + 1), lvl = f.up[t];
+      T(ctx, T2.name, x + cw / 2, p.y + 28, T2.col, { big: true, align: 'center' });
+      T2.items.forEach((it, i) => {
+        const y = p.y + 38 + i * rh, owned = i < lvl, next = i === lvl, price = AS.upgPrice(i);
+        const can = next && S.canPay(f, price);
+        D.frame(ctx, x, y, cw - 2, rh - 2, owned ? 20 : next ? 3 : 1, owned ? 21 : next ? (can ? 13 : 4) : 2);
+        T(ctx, it.name, x + 4, y + 3, owned ? 22 : next ? 31 : 5, { big: rh >= 30 && cw >= 110 });
+        const dl = U.wrapText(it.desc, Math.floor((cw - 10) / 4));
+        dl.slice(0, 2).forEach((l, j) => TS(ctx, l, x + 4, y + (rh >= 30 ? 13 : 10) + j * 7, owned ? 7 : next ? 7 : 4));
+        if (owned) TS(ctx, 'OWNED', x + cw - 6, y + 3, 22, 'right');
+        else TS(ctx, price[0] + ' CR ' + price[1] + ' AL', x + cw - 6, y + rh - 9, can ? 13 : 4, 'right');
+        if (next) G.btns.push({ x, y, w: cw - 2, h: rh - 2, fn: () => (can ? AS.Act.upgrade(t) : AS.Act.fail({ reason: 'cost', cost: price })), press: true, label: 'upg:' + t });
+        G.tip(x, y, cw - 2, rh - 2, it.name + ': ' + it.desc + (owned ? ' (OWNED)' : next ? ' PRICE ' + price[0] + ' CREDITS AND ' + price[1] + ' ALLOY.' : ' BUY THE ONES ABOVE FIRST.'));
+      });
     });
-    if (f.cards.length) TS(ctx, 'YOUR CARDS: ' + f.cards.map(k => AS.CARDS[k].name).join(', ').slice(0, Math.floor((p.w - 16) / 4)), G.W / 2, p.y + p.h - 10, 5, 'center');
+    G.button(ctx, Math.round(G.W / 2 - 40), p.y + p.h - 16, 80, 13, 'CLOSE', () => { AS.Sfx.play('click'); Sc.close(); }, { tip: 'ESC OR U' });
   }
 
   /* ---------- end-of-run report ---------- */
@@ -285,11 +282,11 @@
     T(ctx, 'RANK ' + ORD[place] + ' OF 6', lx, y, won ? 13 : 7, { big: true }); y += 12;
     const rows = [['SYSTEMS HELD (PEAK)', S.ownCount(run, 0) + ' (' + f.stats.peakSystems + ')'], ['CAPTURED / LOST', f.stats.captured + ' / ' + f.stats.systemsLost], ['BOUGHT', f.stats.bought], ['RIVALS ELIMINATED', f.stats.eliminated],
       ['DEFENCES HELD', f.stats.defended], ['RAIDS', f.stats.raids], ['SOLDIERS LOST / KILLED', f.stats.lost + ' / ' + f.stats.killed], ['DESERTED', f.stats.deserted], ['TOTAL INCOME', U.fmtInt(f.stats.income) + ' CR'], ['SALARIES PAID', U.fmtInt(f.stats.salary) + ' CR'],
-      ['CORPORATION', AS.CORPS[f.corp].name], ['DIFFICULTY', AS.DIFFICULTY[run.diff].name]];
+      ['ALLOY / FUEL / FOOD MADE', Math.round(f.stats.alloyMade) + ' / ' + Math.round(f.stats.fuelMade) + ' / ' + Math.round(f.stats.foodMade)], ['DIFFICULTY', AS.DIFFICULTY[run.diff].name]];
     for (const [l, v] of rows) { TS(ctx, l, lx, y, 6); TS(ctx, v, lx + 160, y, 7, 'right'); y += 8; }
     y += 4;
-    const code = U.makeCode(run.seed, f.corp, run.diff);
-    TS(ctx, 'SHARE CODE (SEED, CORPORATION, DIFFICULTY)', lx, y, 5);
+    const code = U.makeCode(run.seed, run.diff);
+    TS(ctx, 'SHARE CODE (SEED AND DIFFICULTY)', lx, y, 5);
     G.button(ctx, lx, y + 7, 160, 14, code, () => {
       try { if (navigator.clipboard) navigator.clipboard.writeText(code).then(() => G.showToast('CODE COPIED', 13), () => G.showToast('CODE: ' + code, 13)); else G.showToast('CODE: ' + code, 13); } catch (e) { G.showToast('CODE: ' + code, 13); }
       AS.Sfx.play('click');
@@ -312,12 +309,12 @@
     });
     const by = p.y + p.h - 20;
     if (G.attract) { TS(ctx, 'DEMO - RESTARTING SOON', G.W / 2, by + 4, 5, 'center'); return; }
-    G.button(ctx, p.x + 10, by, 140, 14, 'PLAY THIS GALAXY AGAIN', () => { AS.Sfx.play('click'); AS.Main.newRun(run.seed, run.diff, f.corp); }, { primary: true });
+    G.button(ctx, p.x + 10, by, 140, 14, 'PLAY THIS GALAXY AGAIN', () => { AS.Sfx.play('click'); AS.Main.newRun(run.seed, run.diff); }, { primary: true });
     G.button(ctx, p.x + 156, by, 90, 14, 'NEW GAME', () => { AS.Sfx.play('click'); AS.Main.toMenu(false); Sc.open('newgame', { seed: U.randomSeed() }); });
     G.button(ctx, p.x + p.w - 100, by, 90, 14, 'MAIN MENU', () => { AS.Sfx.play('click'); AS.Main.toMenu(false); });
   }
 
-  const DRAW = { title: drawTitle, newgame: drawNewGame, corp: drawCorp, settings: drawSettings, ach: drawAch, help: drawHelp, code: drawCode, pause: drawPause, draft: drawDraft, report: drawReport };
+  const DRAW = { title: drawTitle, newgame: drawNewGame, shop: drawShop, settings: drawSettings, ach: drawAch, help: drawHelp, code: drawCode, pause: drawPause, report: drawReport };
   Sc.draw = function (ctx, dt) {
     if (!G.screen) return;
     G.screenT += dt;
@@ -328,14 +325,13 @@
     if (Sc.fieldKey(e)) return true;
     const k = e.key, scr = G.screen;
     if (k === 'Escape') {
-      if (scr === 'draft' || scr === 'report' || scr === 'title' || scr === 'corp') return true;
+      if (scr === 'report' || scr === 'title') return true;
       if (scr === 'pause') { Sc.close(); return true; }
       Sc.back(); return true;
     }
     const n = parseInt(k, 10);
-    if (scr === 'draft' && G.run && G.run.factions[0].drafts.length && n >= 1 && n <= 3) { Act.pickCard(G.run.factions[0].drafts[0].offers[n - 1]); return true; }
+    if (scr === 'shop' && (k === 'u' || k === 'U')) { Sc.close(); return true; }
     if (scr === 'newgame' && n >= 1 && n <= 3) { AS.Main.newRun(G.screenData.seed, AS.DIFF_KEYS[n - 1]); return true; }
-    if (scr === 'corp' && n >= 1 && n <= 3 && G.run) { Sc.pickCorp(S.corpOffers(G.run.seed)[n - 1]); return true; }
     if (scr === 'title' && (k === 'Enter' || k === ' ')) { if (G.saveInfo) AS.Main.resume(G.saveInfo); else Sc.open('newgame', { seed: U.randomSeed() }); return true; }
     return false;
   };

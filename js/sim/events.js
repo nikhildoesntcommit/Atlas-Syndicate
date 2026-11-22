@@ -1,6 +1,6 @@
-/* ATLAS SYNDICATE v5 — sim/events.js
+/* ATLAS SYNDICATE v6 — sim/events.js
    Galaxy events, about every 4 minutes, each announced 60 seconds before it happens so everyone can
-   prepare: solar storm, market boom, mercenary surplus, lane collapse, pirate surge. */
+   prepare: solar storm, gold rush, mercenary surplus, lane collapse, pirate surge. */
 (function (AS) {
   'use strict';
 
@@ -14,8 +14,7 @@
     if (type === 'storm') {
       if (run.rng() < 0.3) e.region = 'core';
       else { e.region = 'arm'; e.arm = Math.floor(run.rng() * C.galaxy.arms); }
-    } else if (type === 'boom') e.res = AS.RES_KEYS[Math.floor(run.rng() * 3)];
-    else if (type === 'lane') {
+    } else if (type === 'lane') {
       // prefer a lane between two different owners: that is where it matters
       const contested = run.lanes.filter(l => run.systems[l.a].owner !== run.systems[l.b].owner && l.closedUntil <= run.t);
       const pool = contested.length ? contested : run.lanes;
@@ -27,13 +26,13 @@
     run.events = { next: null, active: [], history: [] };
     plan(run, EV.first + (run.rng() - 0.5) * EV.jitter);
   };
-  S.regionName = function (run, e) { return e.region === 'core' ? 'THE CORE' : 'ARM ' + 'ABCDE'[e.arm]; };
+  S.regionName = function (run, e) { return e.region === 'core' ? 'THE CORE' : 'ARM ' + 'ABCDEF'[e.arm]; };
   /** Plain description with exact numbers, for banners and tooltips. */
   S.eventText = function (run, e) {
     switch (e.type) {
-      case 'storm': return 'SUPPLY LINES IN ' + S.regionName(run, e) + ' STOP FOR ' + AS.EVENTS.storm.dur + ' S';
-      case 'boom': return 'SURPLUS ' + AS.RES[e.res].name + ' SELLS FOR ' + AS.EVENTS.boom.value + ' CR FOR ' + AS.EVENTS.boom.dur + ' S';
-      case 'mercs': return 'SALARIES -50% AND TRAINING 3X FASTER FOR ' + AS.EVENTS.mercs.dur + ' S';
+      case 'storm': return 'PATHWAYS IN ' + S.regionName(run, e) + ' STOP FOR ' + AS.EVENTS.storm.dur + ' S';
+      case 'boom': return 'MINTS PAY 50% MORE FOR ' + AS.EVENTS.boom.dur + ' S';
+      case 'mercs': return 'SALARIES AND RECRUITING -50%, TRAINING 3X FASTER FOR ' + AS.EVENTS.mercs.dur + ' S';
       case 'lane': { const l = run.lanes[e.lane]; return 'LANE ' + run.systems[l.a].name + ' - ' + run.systems[l.b].name + ' CLOSES FOR ' + AS.EVENTS.lane.dur + ' S'; }
       case 'pirate': return 'EVERY INDEPENDENT GARRISON GROWS BY 50% +5';
     }

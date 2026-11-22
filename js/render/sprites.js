@@ -1,4 +1,4 @@
-/* ATLAS SYNDICATE v5 — render/sprites.js
+/* ATLAS SYNDICATE v6 — render/sprites.js
    All pixel art, generated in code (unchanged v4 generators): painter helpers, facility art, freighters,
    icons, the star, and planets that rotate under a moving day/night terminator. v5 adds faction icons
    and map status badges in the same style. */
@@ -145,9 +145,13 @@
 
   /* resource icons: distinct shapes so colour is never the only cue */
   const GOOD_ICONS = {
-    ore:    ['.bb..', 'bcbb.', 'bbbba', '.aaa.', '.....'],
-    energy: ['..qq.', '.qq..', 'qqqq.', '..qq.', '.qq..'],
-    food:   ['.m.m.', 'mmmmm', 'mlllm', 'mlllm', '.mmm.'],
+    metal:   ['.bb..', 'b6bb.', 'bbbba', '.aaa.', '.....'],
+    gold:    ['..e..', '.ede.', 'eddde', '.cdc.', '..c..'],
+    ice:     ['..v..', '.vqv.', 'vqqqp', '.pqp.', '..p..'],
+    fuel:    ['..3..', '.343.', '3a443', '3a443', '.333.'],
+    alloy:   ['.....', '.777.', '66666', '55555', '.....'],
+    food:    ['.m.m.', 'mmmmm', 'mlllm', 'mlllm', '.mmm.'],
+    credits: ['.ddd.', 'dcddd', 'dcdde', 'ddddb', '.bbb.'],
   };
   /* faction icons (5x5, drawn in the faction colour) and map badges */
   const FICON = {
