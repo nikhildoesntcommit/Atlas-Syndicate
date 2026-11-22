@@ -1,4 +1,4 @@
-/* ATLAS SYNDICATE v4 — util.js
+/* ATLAS SYNDICATE v5 — util.js
    Seeded PRNG with serialisable state, maths helpers, formatting, guarded storage. */
 (function (AS) {
   'use strict';
@@ -85,7 +85,7 @@
   /* ---------- storage: every access guarded, memory fallback ---------- */
   const Store = AS.Store = {
     mem: {},
-    prefix: 'atlas4.',
+    prefix: 'atlas5.',
     get(key, def) {
       key = this.prefix + key;
       let raw = null;
@@ -105,33 +105,26 @@
     },
   };
 
-  /* ---------- share codes: seed + charter + score, e.g. 1KZ9QW-F-7RS ---------- */
-  U.makeCode = function (seed, charter, score) {
-    const ci = Math.max(0, AS.CHARTER_KEYS.indexOf(charter));
-    const body = (seed >>> 0).toString(36).toUpperCase() + '-' + 'ABCDEFGH'[ci] + '-' + Math.max(0, Math.round(score || 0)).toString(36).toUpperCase();
-    let sum = 0;
-    for (let i = 0; i < body.length; i++) sum = (sum * 31 + body.charCodeAt(i)) % 36;
-    return body + sum.toString(36).toUpperCase();
+  /* ---------- share codes: seed + corporation + difficulty, e.g. 1KZ9QW-C-N7 ---------- */
+  const CORP_L = 'ABCDEFGH', DIFF_L = 'ENH';
+  function check(body) { let sum = 0; for (let i = 0; i < body.length; i++) sum = (sum * 31 + body.charCodeAt(i)) % 36; return sum.toString(36).toUpperCase(); }
+  U.makeCode = function (seed, corp, diff) {
+    const ci = Math.max(0, AS.CORP_KEYS.indexOf(corp)), di = Math.max(0, AS.DIFF_KEYS.indexOf(diff));
+    const body = (seed >>> 0).toString(36).toUpperCase() + '-' + CORP_L[ci] + '-' + DIFF_L[di];
+    return body + check(body);
   };
   U.parseCode = function (code) {
     const s = String(code || '').toUpperCase().replace(/[^0-9A-Z-]/g, '');
-    const m = /^([0-9A-Z]{1,7})-([A-H])-([0-9A-Z]{1,6})([0-9A-Z])$/.exec(s);
+    const m = /^([0-9A-Z]{1,7})-([A-H])-([ENH])([0-9A-Z])$/.exec(s);
     if (!m) {
       const plain = parseInt(s, 10);                         // a bare number is accepted as a seed
-      return /^\d{1,10}$/.test(s) && plain > 0 ? { seed: plain >>> 0, charter: 'standard', score: 0 } : null;
+      return /^\d{1,10}$/.test(s) && plain > 0 ? { seed: plain >>> 0, corp: null, diff: 'normal' } : null;
     }
     const body = m[1] + '-' + m[2] + '-' + m[3];
-    let sum = 0;
-    for (let i = 0; i < body.length; i++) sum = (sum * 31 + body.charCodeAt(i)) % 36;
-    if (sum.toString(36).toUpperCase() !== m[4]) return null;
+    if (check(body) !== m[4]) return null;
     const seed = parseInt(m[1], 36) >>> 0;
     if (!seed) return null;
-    return { seed, charter: AS.CHARTER_KEYS['ABCDEFGH'.indexOf(m[2])] || 'standard', score: parseInt(m[3], 36) || 0 };
+    return { seed, corp: AS.CORP_KEYS[CORP_L.indexOf(m[2])] || null, diff: AS.DIFF_KEYS[DIFF_L.indexOf(m[3])] || 'normal' };
   };
 
-  U.dailySeed = function (date) {
-    const d = date || new Date();
-    const n = d.getUTCFullYear() * 10000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
-    return (Math.imul(n, 2654435761) >>> 0) || 1;
-  };
 })(globalThis.AS = globalThis.AS || {});

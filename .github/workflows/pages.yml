@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages 
+name: Deploy to GitHub Pages
 
 on:
   push:
@@ -22,8 +22,12 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - name: Self-test and determinism check
-        run: node tests/run-headless.js selftless.js replay
+      - name: Rule self-test
+        run: node tests/run-headless.js selftest
+      - name: Determinism (replay and save/resume)
+        run: node tests/run-headless.js replay
+      - name: Fuzz (random player actions)
+        run: node tests/run-headless.js fuzz --fuzz 8
 
   deploy:
     needs: test
@@ -36,7 +40,8 @@ jobs:
       - name: Assemble the site
         run: |
           mkdir _site
-          cp -r index.html favicon.svg css js tests _site/
+          cp -r index.html favicon.svg css js _site/
+          mkdir -p _site/tests && cp tests/selftest.html _site/tests/
           touch _site/.nojekyll
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5

@@ -1,4 +1,4 @@
-/* ATLAS SYNDICATE v4 — audio/sfx.js
+/* ATLAS SYNDICATE v5 — audio/sfx.js
    WebAudio context, mix buses (master / music / sfx) and procedural sound effects.
    Nothing is loaded: every sound is synthesised. Audio starts after the first user gesture. */
 (function (AS) {
@@ -77,7 +77,7 @@
     A.hiss(dur * 0.4, vol * 0.4, 900, 120, 'lowpass', delay, 0, bus);
   };
 
-  const GAP = { sale: 0.22, arrive: 0.18, depart: 0.25, click: 0.03, err: 0.12, alarm: 0.6, megaDrop: 0.15, build: 0.08, built: 0.1, warning: 0.8 };
+  const GAP = { hit: 0.12, distant: 0.5, recruit: 0.1, battle: 0.4, sale: 0.22, arrive: 0.18, depart: 0.25, click: 0.03, err: 0.12, alarm: 0.6, megaDrop: 0.15, build: 0.08, built: 0.1, warning: 0.8 };
   A.play = function (name) {
     if (!A.ctx || A.ctx.state !== 'running' || (AS.G.settings && AS.G.settings.mute)) return;
     const now = A.ctx.currentTime;
@@ -120,6 +120,13 @@
           [1047, 1319, 1568, 2093].forEach((f, i) => A.metal(f, 1.6, 0.05, 2.6 + i * 0.12));
           A.thud(30, 2.5, 0.8, 2.6); A.hiss(2.5, 0.4, 5000, 80, 'lowpass', 2.6);
           break;
+        case 'recruit': A.tone(147, 0.08, 'square', 0.04); A.tone(196, 0.08, 'square', 0.04, 0, 0.08); A.hiss(0.05, 0.12, 3000, 900, 'bandpass', 0.02, 3); break;
+        case 'charge': A.tone(98, 0.5, 'sawtooth', 0.05, 196); A.hiss(0.5, 0.12, 300, 2600, 'bandpass', 0, 2); A.tone(196, 0.12, 'square', 0.04, 0, 0.35); break;
+        case 'battle': A.thud(55, 0.6, 0.45); A.hiss(0.7, 0.25, 2400, 120); A.metal(196, 0.5, 0.07, 0.05); A.tone(110, 0.3, 'square', 0.04, 82, 0.1); break;
+        case 'hit': A.hiss(0.12, 0.2, 2600 + Math.random() * 1200, 300, 'bandpass', 0, 2); A.thud(70 + Math.random() * 30, 0.18, 0.2); A.metal(300 + Math.random() * 200, 0.12, 0.03, 0.03); break;
+        case 'capture': A.thud(60, 0.6, 0.5); [196, 247, 294, 392].forEach((f, i) => A.tone(f, 0.22, 'square', 0.045, 0, 0.08 + i * 0.09)); A.metal(784, 0.7, 0.06, 0.45); break;
+        case 'distant': A.thud(48, 0.5, 0.12); A.hiss(0.4, 0.05, 800, 100); break;
+        case 'eliminated': A.thud(36, 1.4, 0.6); [262, 196, 147, 98].forEach((f, i) => A.tone(f, 0.4, 'sawtooth', 0.035, 0, i * 0.18)); A.metal(147, 1.4, 0.07, 0.4); break;
         case 'start': A.thud(55, 0.8, 0.4); A.metal(262, 1.0, 0.06, 0.1); A.metal(392, 1.0, 0.05, 0.25); break;
         case 'type': A.hiss(0.02, 0.12, 5000, 2000, 'bandpass', 0, 3); break;
         case 'boost': A.tone(110, 0.7, 'sawtooth', 0.05, 440); A.hiss(0.6, 0.15, 400, 5000, 'bandpass', 0, 2); A.metal(880, 0.4, 0.04, 0.35); break;

@@ -1,6 +1,7 @@
-/* ATLAS SYNDICATE v4 — render/hud.js
-   Screen-space game UI: top bar, contracts, megaproject widget, banners, the sliding bottom console
-   (market ticker / world / survey / route / megaproject views) and build pop-ups. */
+/* ATLAS SYNDICATE v5 — render/hud.js
+   Screen-space game UI: the top bar (credits, next cycle's net income, systems, clock), threat warnings,
+   the event banner, the faction roster, the galaxy selection panel, the attack order with its odds,
+   and the system view's side panel. Every element carries a short tooltip. */
 (function (AS) {
   'use strict';
 
@@ -8,444 +9,313 @@
   const H = AS.HUD = {};
   const T = (ctx, s, x, y, col, o) => D.text(ctx, s, x, y, col, o);
   const TS = (ctx, s, x, y, col, align) => D.text(ctx, s, x, y, col, { shadow: false, align });
-  const STATUS_TXT = { ok: ['RUN', 22], starved: ['NO INPUT', 18], full: ['FULL', 13], broken: ['STOPPED', 17], build: ['BUILDING', 12] };
-  const GROUND = { terran: [28, 27], rust: [10, 9], cinder: [16, 15], ice: [25, 24], ice2: [21, 20], gas: [3, 2], dwarf: [4, 3], belt: [4, 3] };
+  const Act = () => AS.Act;
+  const sign = v => (v >= 0 ? '+' : '') + v;
 
   /* ---------- top bar ---------- */
   H.drawTop = function (ctx, run, interactive) {
-    const W = G.W;
+    const W = G.W, f = run.factions[0];
     D.rect(ctx, 0, 0, W, 13, 1); D.rect(ctx, 0, 13, W, 1, 3); D.rect(ctx, 0, 14, W, 1, 0);
     ctx.drawImage(AS.Spr.icons.coin, 3, 4);
-    const cr = G.disp.credits;
-    T(ctx, U.fmtNum(cr), 10, 4, run.credits < 0 ? 17 : 13);
-    const net = run.incomeRate - run.expenseRate;
-    T(ctx, (net >= 0 ? '+' : '') + net.toFixed(1) + '/S', 42, 4, net >= 0 ? 22 : 17);
-    G.tip(0, 0, 76, 13, 'CREDITS, AND NET INCOME PER SECOND AFTER UPKEEP AND TRIP COSTS. BELOW ZERO = DEBT, WHICH DRAINS BOARD CONFIDENCE.');
-    T(ctx, 'BOARD', 80, 4, 5);
-    const conf = G.disp.conf, cc = conf > 60 ? 22 : conf > 30 ? 13 : 17;
-    const low = run.conf < 25 && Math.floor(G.time * 4) % 2;
-    D.bar(ctx, 101, 3, 40, 7, conf / 100, cc);
-    T(ctx, Math.round(conf), 144, 4, low ? 31 : cc);
-    if (run.conf < 25) T(ctx, '!', 155, 4, 17);
-    G.tip(78, 0, 82, 13, 'BOARD CONFIDENCE: YOUR LIFE BAR. AT ZERO THE RUN ENDS. LOST BY STARVING WORLDS, DEBT, FAILED CONTRACTS AND MISSED TARGETS.');
-    ctx.drawImage(AS.Spr.icons.clock, 162, 4); T(ctx, U.fmtTime(run.t), 169, 4, 7);
-    G.tip(160, 0, 30, 13, 'TIME PLAYED. EVERY SECOND ADDS TO YOUR SCORE.');
-    T(ctx, 'Q' + (run.sq + 1), 193, 4, 5);
-    const qf = U.safeDiv(G.disp.q, run.target, 0);
-    D.bar(ctx, 205, 3, 30, 7, qf, qf >= 1 ? 22 : 12);
-    T(ctx, U.fmtNum(G.disp.q) + '/' + U.fmtNum(run.target), 238, 4, qf >= 1 ? 22 : 7);
-    if (qf >= 1) T(ctx, 'OK', 238 + D.tw(U.fmtNum(G.disp.q) + '/' + U.fmtNum(run.target)) + 3, 4, 22);
-    const left = run.nextQuarter - run.t;
-    T(ctx, U.fmtTime(left), 310, 4, left < 20 && qf < 1 ? (Math.floor(G.time * 4) % 2 ? 17 : 7) : 6, { align: 'right' });
-    G.tip(191, 0, 122, 13, 'THIS QUARTER: REVENUE SO FAR / BOARD TARGET, AND TIME TO THE REVIEW. TARGETS RISE EVERY QUARTER.');
+    const cr = Math.round(G.disp.credits);
+    T(ctx, U.fmtNum(cr), 10, 4, f.credits < 0 ? 17 : 13);
+    let x = 12 + D.tw(U.fmtNum(cr)) + 6;
+    const fc = G.forecast || { net: 0, income: 0, salary: 0, repairs: 0 };
+    T(ctx, 'NET ' + sign(fc.net), x, 4, fc.net >= 0 ? 22 : (Math.floor(G.time * 3) % 2 ? 17 : 18));
+    const nw = D.tw('NET ' + sign(fc.net));
+    D.bar(ctx, x + nw + 3, 4, 16, 5, run.cycleT / C.game.cycle, 12);
+    G.tip(0, 0, x + nw + 22, 13, 'CREDITS ' + U.fmtInt(f.credits) + '. NEXT CYCLE (EVERY ' + C.game.cycle + ' S): INCOME +' + fc.income + ', SALARIES -' + fc.salary + ', REPAIRS -' + fc.repairs + ' = ' + sign(fc.net) + '. BELOW ZERO CREDITS: A WARNING, THEN SOLDIERS DESERT.');
+    x += nw + 24;
+    const own = S.ownCount(run, 0);
+    T(ctx, 'SYS ' + own + '/' + run.systems.length, x, 4, 7);
+    G.tip(x - 2, 0, 46, 13, 'SYSTEMS YOU HOLD. WIN: ELIMINATE EVERY RIVAL, OR HOLD THE MOST SYSTEMS WHEN THE 30:00 TIMER ENDS.');
+    x += 48;
+    ctx.drawImage(AS.Spr.icons.clock, x, 4);
+    const left = C.game.length - run.t;
+    T(ctx, U.fmtTime(run.t), x + 7, 4, left < 120 ? (Math.floor(G.time * 2) % 2 ? 13 : 7) : 7);
+    TS(ctx, '/' + U.fmtTime(C.game.length), x + 8 + D.tw(U.fmtTime(run.t)), 4, 5);
+    G.tip(x - 2, 0, 58, 13, 'GAME TIME. THE GAME ENDS AT 30:00: MOST SYSTEMS WINS.');
+    x += 60;
+    if (run.t < C.game.protect) {
+      const msg = 'ATTACKS OPEN ' + U.fmtTime(C.game.protect - run.t);
+      D.hazard(ctx, x - 2, 2, D.tw(msg) + 6, 10, 13, G.time * 6);
+      D.rect(ctx, x, 3, D.tw(msg) + 2, 8, 1);
+      TS(ctx, msg, x + 1, 4, 13);
+      G.tip(x - 2, 0, D.tw(msg) + 6, 13, 'PROTECTED PERIOD: NOBODY CAN ATTACK ANYBODY UNTIL 4:00. BUILD YOUR SUPPLY LINES.');
+      x += D.tw(msg) + 8;
+    } else {
+      const nc = run.nextCard - run.t;
+      TS(ctx, 'CARD ' + U.fmtTime(nc), x, 4, 12);
+      G.tip(x - 2, 0, 44, 13, 'NEXT UPGRADE CARD DRAFT. YOU ALSO DRAFT ONE AFTER CAPTURING A RIVAL SYSTEM.');
+      x += 46;
+    }
     if (!interactive) return;
     const bx = W - 164;
-    G.button(ctx, bx, 2, 26, 10, 'TIPS', () => AS.Act.toggleTips(), { active: G.settings.tips, tip: 'TIPS: HOVER EXPLANATIONS AND THE ADVISOR (T).' });
-    G.button(ctx, bx + 28, 2, 14, 10, 'II', () => AS.Act.togglePause(), { active: G.paused, tip: 'PAUSE (SPACE).' });
-    C.sim.hudSpeeds.forEach((s, i) => G.button(ctx, bx + 44 + i * 16, 2, 15, 10, s + 'X', () => AS.Act.setSpeed(s), { active: !G.paused && G.speed === s, tip: 'GAME SPEED (KEYS 1-3).' }));
-    G.button(ctx, bx + 94, 2, 20, 10, G.settings.mute ? 'MUT' : 'SND', () => AS.Act.toggleMute(), { col: G.settings.mute ? 17 : 7, tip: 'SOUND ON/OFF (M).' });
-    G.button(ctx, bx + 116, 2, 46, 10, 'MENU', () => AS.Act.openPause(), { tip: 'PAUSE MENU AND SETTINGS (ESC).' });
+    if (x > bx - 2) return;
+    G.button(ctx, bx, 2, 26, 10, 'TIPS', () => Act().toggleTips(), { active: G.settings.tips, tip: 'TIPS: HOVER ANYTHING FOR AN EXPLANATION (T).' });
+    G.button(ctx, bx + 28, 2, 14, 10, 'II', () => Act().togglePause(), { active: G.paused, tip: 'PAUSE (SPACE). YOU CAN STILL GIVE ORDERS.' });
+    C.sim.hudSpeeds.forEach((s, i) => G.button(ctx, bx + 44 + i * 16, 2, 15, 10, s + 'X', () => Act().setSpeed(s), { active: !G.paused && G.speed === s, tip: 'GAME SPEED (KEYS 1-3).' }));
+    G.button(ctx, bx + 94, 2, 20, 10, G.settings.mute ? 'MUT' : 'SND', () => Act().toggleMute(), { col: G.settings.mute ? 17 : 7, tip: 'SOUND ON/OFF (M).' });
+    G.button(ctx, bx + 116, 2, 46, 10, 'MENU', () => Act().openPause(), { tip: 'PAUSE MENU AND SETTINGS (ESC).' });
   };
 
-  /* ---------- contracts (top left) ---------- */
-  H.drawContracts = function (ctx, run, interactive) {
-    // live score (the end-of-run formula, updated as you play)
-    D.frame(ctx, 2, 17, 132, 11, 1, 4);
-    ctx.drawImage(AS.Spr.icons.star, 4, 20);
-    T(ctx, 'SCORE ' + U.fmtInt(G.disp.score || 0), 11, 20, 13);
-    if (G.best) TS(ctx, 'BEST ' + U.fmtNum(G.best), 131, 20, 5, 'right');
-    G.tip(2, 17, 132, 11, 'SCORE: REVENUE + TIME + CONTRACTS + PEAK COLONISTS + GATE STAGES, TIMES THE CHARTER MULTIPLIER. FINISHING THE GATE ADDS A BIG BONUS.');
-    let y = 30;
-    for (const c of run.contracts) {
-      const left = (c.accepted ? c.deadline : c.expires) - run.t;
-      const urgent = c.accepted && left < 30 && Math.floor(G.time * 3) % 2 === 0;
-      D.frame(ctx, 2, y, 132, 11, 1, urgent ? 17 : c.accepted ? 4 : 3);
-      ctx.drawImage(AS.Spr.goods[c.good], 4, y + 3);
-      TS(ctx, AS.GOODS[c.good].name + ' ' + (c.accepted ? Math.floor(c.done) + '/' : '') + c.qty, 11, y + 3, c.accepted ? 7 : 6);
-      TS(ctx, '+' + U.fmtNum(c.reward), 84, y + 3, 13, 'right');
-      if (c.accepted) {
-        TS(ctx, U.fmtTime(left), 131, y + 3, left < 30 ? 17 : 6, 'right');
-        D.rect(ctx, 3, y + 9, Math.round(U.clamp(c.done / c.qty, 0, 1) * 130), 1, 12);
-        G.tip(2, y, 132, 11, 'ACTIVE CONTRACT: DELIVER ' + c.qty + ' ' + AS.GOODS[c.good].name + ' TO ATLAS PRIME BEFORE THE TIMER ENDS. REWARD ' + c.reward + ' CR. FAILURE: -' + C.contracts.confFail + ' CONFIDENCE.');
-      } else {
-        if (interactive) {
-          G.button(ctx, 87, y + 1, 24, 8, 'TAKE', () => AS.Act.do('accept', { id: c.id }, 'good'), { tip: 'ACCEPT: ' + U.fmtTime(C.contracts.deadline) + ' TO DELIVER ' + c.qty + ' ' + AS.GOODS[c.good].name + ' TO ATLAS PRIME. YOU MAKE ' + S.productionRate(run, c.good).toFixed(1) + '/S NOW.' });
-          G.button(ctx, 112, y + 1, 20, 8, 'NO', () => AS.Act.do('decline', { id: c.id }, 'click'), { tip: 'DECLINE. NO PENALTY.' });
-        }
-        D.rect(ctx, 3, y + 9, Math.round(U.clamp(left / C.contracts.offerTime, 0, 1) * 130), 1, 5);
-        G.tip(2, y, 84, 11, 'CONTRACT OFFER (OPTIONAL). IT LAPSES WHEN THE GREY BAR RUNS OUT.');
+  /* ---------- warnings (left, under the bar) ---------- */
+  H.drawWarnings = function (ctx, run, interactive) {
+    let y = G.HUD_H + 3;
+    const list = run.warnings.slice().sort((a, b) => ({ fight: 0, inc: 1, mass: 2, broke: 3 }[a.kind] - { fight: 0, inc: 1, mass: 2, broke: 3 }[b.kind])).slice(0, 4);
+    for (const w of list) {
+      const txt = w.text, wd = D.tw(txt) + 16;
+      const col = w.kind === 'fight' ? 17 : w.kind === 'inc' ? 18 : w.kind === 'broke' ? 17 : 13;
+      const blink = (w.kind === 'fight' || w.kind === 'inc') && Math.floor(G.time * 3) % 2;
+      D.rect(ctx, 3, y + 1, wd, 10, 0);
+      D.frame(ctx, 2, y, wd, 10, 1, col);
+      D.rect(ctx, 3, y + 1, 3, 8, blink ? 31 : col);
+      if (w.owner >= 0) ctx.drawImage(AS.Gal.ficon(run, w.owner), wd - 6, y + 2);
+      TS(ctx, txt, 9, y + 3, blink ? 31 : 7);
+      if (interactive) {
+        G.btns.push({ x: 2, y, w: wd, h: 10, fn: () => { const s = run.systems[w.sys]; if (s) { if (G.view !== 'galaxy') Act().backToGalaxy(); G.focusOn(s.x, s.y, Math.max(2, G.cam.z)); G.sel = { sys: s.id }; AS.Sfx.play('click'); } } });
+        G.tip(2, y, wd, 10, w.kind === 'mass' ? 'A RIVAL IS MASSING ARMIES NEXT TO YOUR SYSTEM. REINFORCE IT, RECRUIT THERE OR BUILD A PLATFORM. CLICK TO LOOK.' : w.kind === 'inc' ? 'AN ARMY IS ON ITS WAY TO YOUR SYSTEM. CLICK TO LOOK.' : w.kind === 'fight' ? 'A BATTLE IS ON IN YOUR SYSTEM. SEND REINFORCEMENTS: THEY JOIN THE DEFENCE.' : 'PAY YOUR SALARIES: BUILD INCOME OR LOSE SOLDIERS.');
       }
       y += 12;
     }
     return y;
   };
 
-  /* ---------- megaproject widget (top centre) ---------- */
-  H.drawMega = function (ctx, run) {
-    const M = C.mega, w = 168, x = Math.round(G.W / 2 - w / 2), y = 17;
-    const SC = S.sysCfg(run), sysTxt = 'SYSTEM ' + (run.sys + 1) + '/' + AS.CONFIG.campaign.systems.length;
-    if (run.mega.state !== 'active') {   // the goal line: always says what you are working towards
-      const left = Math.ceil(SC.unlock - (run.t - run.sysStart)), worlds = S.colonies(run).length;
-      const txt = run.mega.state === 'done' ? sysTxt + ' - WARPING...'
-        : left > 0 ? sysTxt + ' - GATE IN ' + U.fmtTime(left) + (worlds < SC.minWorlds ? ' - WORLDS ' + worlds + '/' + SC.minWorlds : '')
-          : sysTxt + ' - CLAIM ' + (SC.minWorlds - worlds) + ' MORE FOR THE GATE';
-      const tw = D.tw(txt) + 14;
-      D.frame(ctx, Math.round(G.W / 2 - tw / 2), y, tw, 11, 1, 12);
-      ctx.drawImage(AS.Spr.icons.lock, Math.round(G.W / 2 - tw / 2) + 3, y + 3);
-      TS(ctx, txt, G.W / 2 + 5, y + 3, left < 30 || run.mega.state === 'done' ? 13 : 7, 'center');
-      G.tip(G.W / 2 - tw / 2, y, tw, 11, 'GOAL: EACH SYSTEM HAS A JUMP GATE. IT UNLOCKS ' + U.fmtTime(SC.unlock) + ' INTO THE SYSTEM ONCE YOU OWN ' + SC.minWorlds + ' WORLDS. DELIVER ITS 3 STAGES TO WARP ON. OPEN ALL 3 GATES TO WIN.');
-      return y + 13;
+  /* ---------- event banner ---------- */
+  H.drawEvent = function (ctx, run, y0) {
+    const ev = run.events, e = ev.next;
+    const items = [];
+    for (const a of ev.active) items.push({ e: a, txt: AS.EVENTS[a.type].name + ' ' + U.fmtTime(a.until - run.t) + ' LEFT: ' + S.eventText(run, a), col: 18 });
+    if (e && e.announced) items.push({ e, txt: 'IN ' + U.fmtTime(e.at - run.t) + ': ' + AS.EVENTS[e.type].name + ' - ' + S.eventText(run, e), col: 13 });
+    let y = y0;
+    for (const it of items.slice(0, 2)) {
+      const w = Math.min(G.W - 200, D.tw(it.txt) + 14), x = Math.round(G.W / 2 - w / 2);
+      D.rect(ctx, x + 1, y + 1, w, 11, 0);
+      D.plate(ctx, x, y, w, 11, 1);
+      D.hazard(ctx, x + 1, y + 1, 3, 9, it.col, G.time * 6);
+      TS(ctx, it.txt.slice(0, Math.floor((w - 12) / 4)), x + 7, y + 3, it.col);
+      G.tip(x, y, w, 11, 'GALAXY EVENT, ANNOUNCED 60 S AHEAD SO YOU CAN PREPARE.');
+      y += 13;
     }
-    if (run.mega.state !== 'active') return y;
-    const st = S.megaStage(run), goods = Object.keys(st.req);
-    const h = 13 + goods.length * 7;
-    D.plate(ctx, x, y, w, h, 1);
-    T(ctx, 'S' + (run.sys + 1) + ' GATE  ' + (run.mega.stage + 1) + '/' + M.stages.length + ' ' + st.name, x + 5, y + 3, 13);
-    TS(ctx, Math.round(S.megaFraction(run) * 100) + '%', x + w - 5, y + 3, 7, 'right');
-    goods.forEach((g, i) => {
-      const yy = y + 11 + i * 7, need = st.req[g], got = Math.min(need, run.mega.done[g]);
-      ctx.drawImage(AS.Spr.goods[g], x + 5, yy);
-      TS(ctx, AS.GOODS[g].name, x + 12, yy, 6);
-      D.bar(ctx, x + 44, yy, 80, 6, got / need, got >= need ? 22 : AS.GOODS[g].col);
-      TS(ctx, Math.floor(got) + '/' + need, x + w - 5, yy, got >= need ? 22 : 7, 'right');
-    });
-    G.tip(x, y, w, h, 'MEGAPROJECT: DELIVER THESE GOODS TO THE ' + M.name + '. EACH DELIVERY PAYS ' + Math.round(M.payFrac * 100) + '% OF BASE PRICE. EACH STAGE: +' + M.stageConf + ' CONFIDENCE AND ' + M.stageGrant + ' CREDITS. CLICK TO FIND IT.');
-    G.btns.push({ x, y, w, h, fn: () => { const s = S.site(run); if (s) { G.sel = { kind: 'body', id: s.id }; G.focusOn(s.sx, s.sy, Math.max(G.cam.z, 2)); AS.Sfx.play('click'); } } });
-    return y + h + 2;
+    return y;
   };
 
-  /* ---------- banners & toasts ---------- */
-  H.drawBanner = function (ctx, run, y) {
-    if (!run.banner) return y;
-    const b = run.banner, tw = D.tw(b.text);
-    const k = U.easeOut(U.clamp((4.5 - b.t) * 5, 0, 1));   // stamps open sideways on arrival
-    const w = Math.max(8, Math.round((tw + 16) * k)), x = Math.round(G.W / 2 - w / 2);
-    const yy = y;
-    if (k < 0.7) { D.frame(ctx, x, yy, w, 13, 13, 0); return yy + 15; }
-    const bad = b.kind === 'bad' || b.kind === 'warn';
-    D.frame(ctx, x, yy, w, 13, b.kind === 'good' ? 20 : b.kind === 'mega' ? 9 : bad ? 15 : 2, 0);
-    if (bad || b.kind === 'mega') {
-      const ph = Math.floor(G.time * 10);
-      const flash = b.kind === 'warn' ? Math.floor(G.time * 5) % 2 === 0 : true;
-      if (flash) { D.hazard(ctx, x + 1, yy + 1, w - 2, 2, b.kind === 'mega' ? 13 : b.kind === 'warn' ? 13 : 17, ph); D.hazard(ctx, x + 1, yy + 10, w - 2, 2, b.kind === 'mega' ? 13 : b.kind === 'warn' ? 13 : 17, -ph); }
-    } else { D.rect(ctx, x + 1, yy + 1, w - 2, 1, b.kind === 'good' ? 22 : 4); }
-    const ic = b.kind === 'warn' ? AS.Spr.icons.warn : b.kind === 'good' ? null : null;
-    if (ic) ctx.drawImage(ic, x + 3, yy + 4);
-    T(ctx, b.text, G.W / 2, yy + 4, b.col === 17 ? 31 : b.col, { align: 'center' });
-    return yy + 15;
+  /* ---------- faction roster (right) ---------- */
+  H.drawRoster = function (ctx, run) {
+    const w = 96, x = G.W - w - 3;
+    let y = G.HUD_H + 3;
+    const lead = S.leaderRaw(run);
+    D.rect(ctx, x + 1, y + 1, w, 8 + run.factions.length * 9, 0);
+    D.frame(ctx, x, y, w, 8 + run.factions.length * 9, 1, 3);
+    TS(ctx, 'FACTION', x + 4, y + 2, 5); TS(ctx, 'SYS', x + w - 4, y + 2, 5, 'right');
+    y += 8;
+    const order = run.factions.slice().sort((a, b) => S.ownCount(run, b.id) - S.ownCount(run, a.id) || a.id - b.id);
+    for (const f of order) {
+      const n = S.ownCount(run, f.id);
+      const col = f.alive ? f.col : 4;
+      ctx.drawImage(AS.Spr.factionIcon(f.icon, col), x + 3, y + 1);
+      TS(ctx, f.id === 0 ? 'YOU' : AS.PERS_NAMES[f.pers], x + 10, y + 1, f.alive ? (f.id === 0 ? 13 : 7) : 4);
+      TS(ctx, f.alive ? n : 'OUT', x + w - 4, y + 1, f.alive ? col : 4, 'right');
+      if (f.id === lead && Math.floor(G.time * 2) % 2) TS(ctx, '!', x + w - 18, y + 1, 17);
+      G.tip(x, y, w, 9, f.id === 0 ? 'YOU (' + AS.CORPS[f.corp].name + ': ' + AS.CORPS[f.corp].desc + ')' : f.name + ' - ' + AS.PERS_NAMES[f.pers] + ': ' + AS.PERS_DESC[f.pers] + (f.id === lead ? ' HOLDS 35%+ OF THE GALAXY: EVERYONE TARGETS IT.' : ''));
+      y += 9;
+    }
+    if (lead >= 0) {
+      const t = 'LEADER: ' + (lead === 0 ? 'YOU' : AS.PERS_NAMES[run.factions[lead].pers]);
+      D.frame(ctx, x, y + 2, w, 9, 1, 17);
+      TS(ctx, t.slice(0, 23), x + 3, y + 4, 17);
+      G.tip(x, y + 2, w, 9, 'LEADER PRESSURE: A FACTION HOLDING 35% OF THE GALAXY BECOMES EVERY RIVAL\'S PRIORITY TARGET.');
+      y += 12;
+    }
+    return y;
+  };
+
+  /* ---------- galaxy selection panel (bottom left) ---------- */
+  H.drawSelPanel = function (ctx, run) {
+    if (!G.sel || G.sel.sys === undefined || G.order) return;
+    const s = run.systems[G.sel.sys];
+    if (!s) return;
+    const k = AS.Gal.known(run, s), o = s.owner >= 0 ? run.factions[s.owner] : null;
+    const w = 188, h = 70, x = 3, y = G.mapBottom() - h - 3;
+    D.rect(ctx, x + 2, y + 2, w, h, 0);
+    D.plate(ctx, x, y, w, h, 2);
+    D.rect(ctx, x + 1, y + 1, w - 2, 3, o ? o.col : 6);
+    G.block(x, y, w, h);
+    ctx.drawImage(AS.Gal.ficon(run, s.owner), x + 6, y + 8);
+    T(ctx, s.name, x + 14, y + 8, 31);
+    TS(ctx, (o ? (o.id === 0 ? 'YOURS' : o.short + ' - ' + AS.PERS_NAMES[o.pers]) : 'INDEPENDENT') + (s.capital >= 0 && s.capital === s.owner ? ' - CAPITAL' : '') + '  ' + (s.region === 'core' ? 'CORE' : 'ARM ' + 'ABCDE'[s.arm]), x + 14 + D.tw(s.name) + 5, y + 9, 6);
+    G.button(ctx, x + w - 13, y + 6, 10, 9, 'X', () => { G.sel = null; AS.Sfx.play('click'); }, { tip: 'CLOSE (ESC).' });
+    let yy = y + 19;
+    const myAtt = s.battle && run.battles.find(b => b.id === s.battle && b.att.owner === 0);
+    if (myAtt) {
+      const r = S.oddsRaw(S.stackStrength(run, myAtt.att), S.defStrength(run, s), myAtt.att.mode);
+      T(ctx, 'YOUR ' + (myAtt.att.mode === 'raid' ? 'RAID' : 'ATTACK') + ': ' + Math.round(r.p * 100) + '% NOW', x + 6, yy, r.p >= 0.5 ? 22 : 17);
+      G.button(ctx, x + w - 64, y + h - 17, 58, 12, 'RETREAT', () => Act().retreat(myAtt.id), { tip: 'PULL OUT: SURVIVORS RETURN HOME, LOSING ' + Math.round(C.combat.retreatLoss * 100) + '% ON THE WAY OUT.' });
+      yy += 9;
+    }
+    if (k.exact) {
+      const g = s.gar;
+      TS(ctx, 'DEFENCE ' + k.v + ' = ' + g.n + ' SOLDIERS' + (g.vet >= 0.33 ? ' VET ' + Math.floor(g.vet * 3) : '') + (g.ships ? ' + ' + g.ships + ' SHIPS' : '') + (s.plat.n ? ' + ' + s.plat.n + ' PLATFORMS' : ''), x + 6, yy, 7);
+      G.tip(x, yy - 1, w, 7, 'DEFENCE = SOLDIERS (VETERANS UP TO +50%) + WARSHIPS + PLATFORMS, TIMES THE DEFENDER BONUS' + (s.capital >= 0 ? ' AND THE CAPITAL BONUS' : '') + '.');
+    } else TS(ctx, 'SIZE BAND ' + k.text + ' - TOO FAR AWAY TO SEE EXACT NUMBERS', x + 6, yy, 5);
+    yy += 8;
+    let px = x + 6;
+    for (const p of s.planets) { ctx.drawImage(AS.Spr.goods[p.type], px, yy); for (let i = 0; i < p.rich; i++) D.rect(ctx, px + 6, yy + 4 - i * 2, 1, 1, 13); px += 10; }
+    TS(ctx, s.planets.length + ' PLANETS', px + 2, yy, 5);
+    yy += 9;
+    if (s.owner === 0) {
+      const y2 = S.sysYield(run, s);
+      TS(ctx, 'INCOME +' + Math.round(y2.credits) + '/CYCLE  POP ' + s.pop + (s.train.q ? '  TRAINING ' + s.train.q : ''), x + 6, yy, 22);
+      G.button(ctx, x + 6, y + h - 17, 84, 12, 'OPEN SYSTEM', () => Act().openSystem(s.id), { primary: true, tip: 'OPEN THE SYSTEM VIEW: EXTRACTORS AND SUPPLY LINES (OR CLICK THE SYSTEM AGAIN).' });
+      G.button(ctx, x + 94, y + h - 17, 58, 12, 'RECRUIT +5', () => Act().recruit(s.id), { tip: 'TRAIN 5 SOLDIERS HERE (ONE EVERY ' + C.army.trainTime + ' S). EACH COSTS SALARY EVERY CYCLE; SALARIES RISE WITH ARMY SIZE.' });
+    } else {
+      const adj = S.neighbours(run, s.id).some(n => run.systems[n].owner === 0);
+      TS(ctx, adj ? (run.t < C.game.protect ? 'ATTACKS OPEN AT 4:00' : 'DRAG FROM YOUR SYSTEM ONTO IT TO ATTACK') : 'NOT NEXT TO YOUR SYSTEMS', x + 6, yy, adj ? 13 : 5);
+      if (s.owner === -1 && adj) {
+        const price = S.buyPrice(run, run.factions[0], s);
+        G.button(ctx, x + 6, y + h - 17, 98, 12, 'BUY ' + U.fmtInt(price) + ' CR', () => Act().buy(s.id), { disabled: run.factions[0].credits < price || !!s.battle, tip: 'BUY THIS INDEPENDENT SYSTEM: PEACEFUL, BUILDINGS INTACT, BUT EXPENSIVE. THE PRICE RISES WITH EVERY SYSTEM YOU OWN.' });
+      }
+    }
+  };
+
+  /* ---------- the attack / move order (after dragging onto a system) ---------- */
+  H.drawOrder = function (ctx, run) {
+    const o = G.order;
+    if (!o) return;
+    const from = run.systems[o.from], to = run.systems[o.to];
+    if (!from || !to || from.owner !== 0) { G.order = null; return; }
+    const hostile = to.owner !== 0;
+    const g = from.gar;
+    const n = o.frac >= 1 ? g.n : Math.round(g.n * o.frac), ships = o.frac >= 1 ? g.ships : Math.round(g.ships * o.frac);
+    const st = { owner: 0, n, vet: g.vet, ships, sdur: g.sdur };
+    const w = 214, h = hostile ? 74 : 54;
+    const p = G.toScreen(to.x, to.y);
+    let x = Math.round(p.x + 16), y = Math.round(p.y - h / 2);
+    if (x + w > G.W - 3) x = Math.round(p.x - w - 16);
+    x = U.clamp(x, 3, G.W - w - 3); y = U.clamp(y, G.HUD_H + 3, G.mapBottom() - h - 3);
+    D.rect(ctx, x + 2, y + 2, w, h, 0);
+    D.plate(ctx, x, y, w, h, 2);
+    D.hazard(ctx, x + 1, y + 1, w - 2, 3, hostile ? 17 : 13, 0);
+    G.block(x, y, w, h);
+    const tgtName = to.owner >= 0 ? (to.owner === 0 ? 'YOUR SYSTEM' : AS.PERS_NAMES[run.factions[to.owner].pers]) : 'INDEPENDENT';
+    T(ctx, (hostile ? 'ATTACK ' : 'MOVE TO ') + to.name, x + 6, y + 8, 31);
+    TS(ctx, tgtName, x + w - 6, y + 9, AS.Gal.fcol(run, to.owner), 'right');
+    TS(ctx, 'SEND', x + 6, y + 21, 6);
+    [[0.25, '25%'], [0.5, '50%'], [0.75, '75%'], [1, 'ALL']].forEach(([fr, l], i) => G.button(ctx, x + 30 + i * 30, y + 18, 28, 11, l, () => { o.frac = fr; AS.Sfx.play('click'); }, { active: o.frac === fr, tip: 'HOW MUCH OF THE GARRISON TO SEND. WHAT STAYS BEHIND DEFENDS ' + from.name + '.' }));
+    TS(ctx, n + ' SOLDIERS' + (ships ? ' + ' + ships + ' SHIPS' : ''), x + 152, y + 21, 7);
+    if (hostile) {
+      const odds = S.odds(run, st, to, 'attack');
+      const pc = Math.round(odds.p * 100);
+      const col = pc >= 70 ? 22 : pc >= 45 ? 13 : 17;
+      T(ctx, pc + '% TO WIN', x + 6, y + 33, col, { big: false });
+      TS(ctx, 'EXPECTED LOSSES ' + odds.lossLo + '-' + odds.lossHi + '   YOU ' + Math.round(odds.att) + ' VS ' + Math.round(odds.def), x + 62, y + 34, 7);
+      G.tip(x, y + 31, w, 10, 'ODDS FROM THE SAME BATTLE MODEL THE GAME USES: DICE ROUNDS WHERE EACH SIDE HITS IN PROPORTION TO ITS STRENGTH. DEFENDERS GET A ' + Math.round((C.combat.defBonus - 1) * 100) + '% BONUS' + (to.capital >= 0 && to.capital === to.owner ? ', CAPITALS MORE' : '') + '.');
+      const raid = S.odds(run, st, to, 'raid');
+      TS(ctx, 'RAID: ' + C.combat.raidRounds + ' ROUNDS, WRECK BUILDINGS, LOOT, COME HOME (' + Math.round(raid.p * 100) + '% SURVIVE)', x + 6, y + 45, 5);
+      const protectedNow = run.t < C.game.protect;
+      G.button(ctx, x + 6, y + h - 17, 70, 12, 'ATTACK', () => Act().sendOrder('attack'), { primary: true, disabled: protectedNow || n + ships <= 0, tip: protectedNow ? 'ATTACKS OPEN AT 4:00.' : 'CAPTURE IT. A CAPTURED SYSTEM KEEPS ITS BUILDINGS, DAMAGED: REPAIR THEM TO PUT IT TO WORK.' });
+      G.button(ctx, x + 80, y + h - 17, 60, 12, 'RAID', () => Act().sendOrder('raid'), { disabled: protectedNow || n + ships <= 0 || to.owner < 0, tip: to.owner < 0 ? 'INDEPENDENTS HAVE NOTHING WORTH RAIDING.' : 'FIGHT ' + C.combat.raidRounds + ' ROUNDS, DAMAGE THEIR BUILDINGS, STEAL CREDITS, THEN RETURN.' });
+    } else {
+      TS(ctx, 'ARMIES TRAVEL ONLY ALONG LANES, THROUGH YOUR OWN SYSTEMS', x + 6, y + 33, 5);
+      G.button(ctx, x + 6, y + h - 17, 70, 12, 'MOVE', () => Act().sendOrder('move'), { primary: true, disabled: n + ships <= 0 });
+    }
+    G.button(ctx, x + w - 64, y + h - 17, 58, 12, 'CANCEL', () => { G.order = null; AS.Sfx.play('click'); }, { tip: 'ESC' });
+  };
+
+  /* ---------- system view side panel ---------- */
+  H.drawSysPanel = function (ctx, run, s, L) {
+    const f = run.factions[0], own = s.owner === 0;
+    const pw = L.pw, x = G.W - pw, y0 = G.HUD_H, h = G.mapBottom() - G.HUD_H;
+    D.plate(ctx, x, y0, pw, h, 2);
+    G.block(x, y0, pw, h);
+    D.hazard(ctx, x + 1, y0 + 1, pw - 2, 3, 13, 0);
+    T(ctx, s.name, x + 6, y0 + 8, 31, { big: true });
+    G.button(ctx, x + pw - 50, y0 + 7, 46, 11, 'GALAXY', () => Act().backToGalaxy(), { tip: 'BACK TO THE GALAXY (ESC OR RIGHT-CLICK).' });
+    const y = S.sysYield(run, s);
+    let yy = y0 + 22;
+    const row = (label, val, col, tip) => { TS(ctx, label, x + 6, yy, 5); TS(ctx, val, x + pw - 6, yy, col || 7, 'right'); if (tip) G.tip(x, yy - 1, pw, 8, tip); yy += 8; };
+    row('ORE / ENERGY', (Math.round(y.units.ore * 10) / 10) + ' / ' + (Math.round(y.units.energy * 10) / 10), 7, 'UNITS DELIVERED TO THE STATION PER CYCLE. THE FACTORY TURNS EACH ORE + ENERGY PAIR INTO ' + C.econ.pairValue + ' CR, TIMES THE POPULATION BONUS.');
+    row('FOOD > POPULATION', (Math.round(y.units.food * 10) / 10) + ' > ' + s.pop + '/' + y.popCap, s.pop > y.popCap ? 17 : 22, 'EACH FOOD SUPPORTS ' + C.econ.popPerFood + ' POPULATION (MAX ' + C.econ.popMax + '). POPULATION GROWS 1 PER CYCLE TOWARD THAT.');
+    row('OUTPUT BONUS', 'X' + y.popMult.toFixed(2), 13, 'POPULATION MULTIPLIES FACTORY OUTPUT: +' + Math.round(C.econ.popMult * 100) + '% PER POPULATION.');
+    row('INCOME', '+' + Math.round(y.credits) + ' CR/CYCLE', y.credits > 0 ? 22 : 17, 'WHAT THIS SYSTEM ADDS TO YOUR EMPIRE EVERY CYCLE. ONLY COMPLETE CHAINS PAY.');
+    row('LINES', s.lines.length + '/' + S.lineSlots(run, s), 7, 'SUPPLY LINES IN USE / AVAILABLE. MORE UNLOCK AT POPULATION ' + C.econ.linesAtPop.join(' AND ') + ', AND FROM CARDS.');
+    row('FREIGHTERS FREE', S.freeFreighters(s) + ' OF ' + s.freighters, 7, 'A LINE NEEDS ONE FREIGHTER PER STOP AFTER THE FIRST TO RUN AT FULL SPEED.');
+    yy += 2;
+    if (own) {
+      const bw = Math.floor((pw - 16) / 2);
+      G.button(ctx, x + 6, yy, bw, 12, 'FREIGHTER ' + S.price(run, f, 'freighter'), () => Act().doSys('buyfr', { sys: s.id }, 'buy'), { disabled: s.freighters >= C.econ.maxFreighters, tip: 'BUY A FREIGHTER. IT JOINS THE LINE THAT NEEDS IT MOST. MAX ' + C.econ.maxFreighters + ' PER SYSTEM.' });
+      const rc = S.repairAllCost(run, f, s);
+      G.button(ctx, x + 10 + bw, yy, bw, 12, rc ? 'REPAIR ' + rc : 'NO REPAIRS', () => Act().doSys('repairall', { sys: s.id }, 'repair'), { disabled: !rc, primary: rc > 0 && S.buildings(run, s).some(b => b.dur <= 0), tip: 'REPAIR EVERYTHING HERE TO 100%. AT 0% A BUILDING STOPS WORKING. AUTO-REPAIR (BELOW) FIXES ANYTHING UNDER ' + C.dur.autoRepairAt + '% AT EACH CYCLE.' });
+      yy += 15;
+    }
+    // selected line / planet details
+    const sl = G.sel && G.sel.line !== undefined ? S.lineById(s, G.sel.line) : null;
+    if (sl && own) {
+      const li = s.lines.indexOf(sl), col = AS.SysView.LINE_COLS[li % 6];
+      D.frame(ctx, x + 4, yy, pw - 8, 36, 1, col);
+      TS(ctx, 'LINE ' + (li + 1) + ': ' + sl.stops.length + ' STOPS  ' + Math.round(y.eff[li] * 100) + '% SPEED  ' + Math.round(sl.dur) + '% DUR', x + 8, yy + 3, col);
+      TS(ctx, 'FREIGHTERS ' + sl.fr + ' (NEEDS ' + Math.ceil((sl.stops.length - 1) / f.mods.reach) + ')', x + 8, yy + 12, 7);
+      G.button(ctx, x + pw - 40, yy + 10, 14, 10, '-', () => Act().doSys('fr', { sys: s.id, line: sl.id, d: -1 }, 'click'), { tip: 'TAKE A FREIGHTER OFF THIS LINE.' });
+      G.button(ctx, x + pw - 24, yy + 10, 14, 10, '+', () => Act().doSys('fr', { sys: s.id, line: sl.id, d: 1 }, 'click'), { tip: 'ADD A FREIGHTER (BUYS ONE IF NONE ARE FREE).' });
+      G.button(ctx, x + 8, yy + 22, 56, 10, 'TRIM END', () => Act().doSys('trim', { sys: s.id, line: sl.id }, 'remove'), { tip: 'REMOVE THE LAST STOP.' });
+      G.button(ctx, x + 68, yy + 22, 60, 10, 'REMOVE', () => { Act().doSys('unline', { sys: s.id, line: sl.id }, 'remove'); G.sel = null; }, { tip: 'REMOVE THE WHOLE LINE (50% REFUND).' });
+      yy += 39;
+    }
+    // garrison & military
+    D.rect(ctx, x + 4, yy, pw - 8, 1, 3); yy += 3;
+    const g = s.gar;
+    row('SOLDIERS', g.n + (g.vet >= 0.33 ? ' VET ' + Math.floor(g.vet * 3) : '') + (s.train.q ? ' (+' + s.train.q + ')' : ''), 7, 'SOLDIERS HERE. THEY GAIN VETERANCY OVER TIME AND IN BATTLE (UP TO +' + Math.round(f.mods.vetBonus * 100) + '% STRENGTH). NEW RECRUITS START AT ZERO.');
+    row('WARSHIPS / PLATFORMS', g.ships + ' / ' + s.plat.n, 7, 'WARSHIPS: ONE-TIME COST, NO SALARY, ' + C.equip.shipPower + ' STRENGTH, MOVE WITH ARMIES. PLATFORMS: ' + C.equip.platformPower + ' STRENGTH, DEFENCE ONLY. BOTH WEAR DOWN.');
+    row('DEFENCE', Math.round(S.defStrength(run, s)), 13, 'TOTAL DEFENDING STRENGTH, INCLUDING THE DEFENDER BONUS.');
+    if (own) {
+      const bw = Math.floor((pw - 20) / 3);
+      G.button(ctx, x + 6, yy, bw, 12, 'RECRUIT', () => Act().recruit(s.id), { primary: AS.Tutorial && AS.Tutorial.want('recruit'), tip: 'TRAIN 5 SOLDIERS (' + C.army.trainTime + ' S EACH). +' + Math.round(S.salaryFor(run, f, S.soldiers(run, 0) + 5) - S.salary(run, f)) + ' CR SALARY PER CYCLE.' });
+      G.button(ctx, x + 8 + bw, yy, bw, 12, 'SHIP ' + S.price(run, f, 'ship'), () => Act().doSys('ship', { sys: s.id }, 'build'), { tip: 'BUILD A WARSHIP: ' + Math.round(C.equip.shipPower * f.mods.shipPower) + ' STRENGTH, NO SALARY.' });
+      G.button(ctx, x + 10 + bw * 2, yy, bw, 12, 'PLAT ' + S.price(run, f, 'plat'), () => Act().doSys('plat', { sys: s.id }, 'build'), { disabled: s.plat.n >= C.equip.maxPlatforms, tip: 'BUILD A DEFENCE PLATFORM: ' + Math.round(C.equip.platformPower * f.mods.platPower) + ' DEFENCE STRENGTH HERE.' });
+      yy += 15;
+      G.button(ctx, x + 6, yy, pw - 12, 11, 'AUTO-REPAIR ' + (f.autoRepair ? 'ON' : 'OFF'), () => Act().doSys('autorepair', { on: !f.autoRepair }, 'click'), { active: f.autoRepair, tip: 'EMPIRE-WIDE: AT EACH CYCLE, REPAIR ANYTHING UNDER ' + C.dur.autoRepairAt + '% IF YOU CAN AFFORD IT. SHOWN AS REPAIRS IN THE NET FORECAST.' });
+      yy += 14;
+    }
+    // building condition list
+    const bl = S.buildings(run, s).filter(b => b.dur < 100).sort((a, b) => a.dur - b.dur).slice(0, Math.max(0, Math.floor((y0 + h - yy - 4) / 8)));
+    for (const b of bl) {
+      const nm = { station: 'FACTORY', ext: AS.RES[s.planets[b.idx] ? s.planets[b.idx].type : 'ore'].name + ' EXTRACTOR', line: 'LINE ' + (b.idx + 1), fleet: 'FREIGHTERS', plat: 'PLATFORMS', ships: 'WARSHIPS' }[b.kind];
+      TS(ctx, nm, x + 6, yy, b.dur <= 0 ? 17 : 6);
+      D.bar(ctx, x + pw - 50, yy, 30, 6, b.dur / 100, b.dur < 25 ? 17 : b.dur < 50 ? 18 : 22);
+      if (own) G.btns.push({ x: x + pw - 18, y: yy - 1, w: 14, h: 8, fn: () => Act().doSys('repair', { sys: s.id, kind: b.kind, idx: b.idx }, 'repair') });
+      if (own) TS(ctx, 'FIX', x + pw - 17, yy, 13);
+      G.tip(x, yy - 1, pw, 8, nm + ': ' + Math.round(b.dur) + '% DURABILITY. REPAIR: ' + S.repairCost(run, f, b) + ' CR.');
+      yy += 8;
+    }
+  };
+
+  /* ---------- ticker (bottom strip) ---------- */
+  H.drawTicker = function (ctx, run) {
+    const y = G.mapBottom();
+    D.rect(ctx, 0, y, G.W, G.TICKER_H, 1); D.rect(ctx, 0, y, G.W, 1, 3);
+    const last = run.log[run.log.length - 1];
+    const hint = G.view === 'system' ? 'CLICK A PLANET: BUILD EXTRACTOR.  DRAG STATION > PLANET > PLANET: SUPPLY LINE.  ESC: GALAXY' : 'CLICK YOUR SYSTEM: OPEN IT.  DRAG FROM IT TO A NEIGHBOUR: MOVE OR ATTACK.  SPACE: PAUSE';
+    if (last && run.t - last.t < 12) TS(ctx, U.fmtTime(last.t) + '  ' + last.text, 4, y + 3, last.k === 'bad' ? 17 : last.k === 'good' ? 22 : last.k === 'warn' ? 13 : 7);
+    else TS(ctx, hint, 4, y + 3, 5);
   };
   H.drawToast = function (ctx, y) {
-    if (!G.toast) return;
-    const tw = D.tw(G.toast.text), x = Math.round(G.W / 2 - tw / 2 - 4);
-    D.frame(ctx, x, y, tw + 8, 9, 0, G.toast.col);
-    TS(ctx, G.toast.text, G.W / 2, y + 2, G.toast.col, 'center');
+    const t = G.toast;
+    if (!t) return;
+    const w = D.tw(t.text) + 14, x = Math.round(G.W / 2 - w / 2);
+    D.rect(ctx, x + 1, y + 1, w, 11, 0);
+    D.frame(ctx, x, y, w, 11, 1, t.col);
+    TS(ctx, t.text, G.W / 2, y + 3, t.col, 'center');
   };
-  /** Achievement and other notices: slide in at the right above the console. */
   H.drawNotices = function (ctx, dt) {
-    let y = G.mapBottom() - 4;
-    for (const n of G.notices.slice(0, 2)) {   // two at a time; the rest wait their turn
+    let y = G.mapBottom() - 30;
+    for (const n of G.notices) {
       n.t -= dt;
-      const k = U.clamp(Math.min(n.max - n.t, n.t) * 4, 0, 1);
-      const w = 150, h = 20, x = Math.round(G.W - 4 - w * U.easeOut(k));
-      y -= h + 3;
-      D.plate(ctx, x, y, w, h, 2);
-      ctx.drawImage(AS.Spr.icons.star, x + 5, y + 4);
-      T(ctx, n.title, x + 13, y + 4, 13);
-      TS(ctx, n.text, x + 13, y + 12, 6);
+      const k = U.clamp(Math.min(n.t, n.max - n.t) * 4, 0, 1);
+      const w = Math.max(D.tw(n.text), D.tw(n.title)) + 14, x = Math.round(G.W - w - 4 + (1 - k) * 40);
+      D.plate(ctx, x, y, w, 22, 1);
+      TS(ctx, n.title, x + 6, y + 5, 12); T(ctx, n.text, x + 6, y + 12, 31);
+      y -= 25;
     }
     G.notices = G.notices.filter(n => n.t > 0);
-  };
-
-  H.drawMapControls = function (ctx) {
-    const y = G.mapBottom() - 14;
-    G.button(ctx, G.W - 52, y, 14, 11, '+', () => G.zoomStep(1), { tip: 'ZOOM IN (WHEEL / E / PINCH).' });
-    G.button(ctx, G.W - 37, y, 14, 11, '-', () => G.zoomStep(-1), { tip: 'ZOOM OUT (WHEEL / Q).' });
-    G.button(ctx, G.W - 22, y, 20, 11, 'FIT', () => G.fitView(G.run, true), { tip: 'SHOW EVERY KNOWN WORLD (R). DRAG ANYWHERE TO PAN.' });
-    // BOOST: the player's active ability, with a recharge meter
-    const run = G.run, B = AS.CONFIG.abilities.boost, bx = G.W - 112, on = run.boostT > 0, ready = run.boostCd <= 0;
-    G.button(ctx, bx, y, 56, 11, on ? 'BOOST ' + Math.ceil(run.boostT) : ready ? 'BOOST (B)' : 'BOOST', () => AS.Act.boost(), { primary: ready, active: on, tip: 'BOOST (B): ALL FREIGHTERS FLY AT DOUBLE SPEED FOR ' + B.dur + ' S. RECHARGES IN ' + B.cooldown + ' S.' });
-    if (!ready && !on) { D.rect(ctx, bx + 1, y + 9, 54, 1, 0); D.rect(ctx, bx + 1, y + 9, Math.round(54 * (1 - run.boostCd / B.cooldown)), 1, 13); }
-  };
-  /** The facility this world would benefit from most (shown as BEST in the build menu). */
-  H.recommend = function (run, b) {
-    const has = t => b.fac.some(f => f && f.type === t);
-    const map = { ore: 'mine', ice: 'drill', gas: 'skimmer' };
-    if ((b.starving || AS.Bot.foodBalance(run) < 0.2) && b.dep.ice >= 0.9) return !has('drill') ? 'drill' : !has('agri') ? 'agri' : 'drill';
-    const ext = ['ore', 'ice', 'gas'].filter(g => b.dep[g]).sort((a, c) => b.dep[c] - b.dep[a]);
-    for (const g of ext) if (!has(map[g])) return map[g];
-    if (b.dep.ore && !has('smelter')) return 'smelter';
-    if (b.dep.gas >= 1 && !has('fab') && S.productionRate(run, 'alloy') > 0.2) return 'fab';
-    if (b.pop >= S.housing(run, b) - 0.5) return 'habitat';
-    return ext.length ? map[ext[0]] : 'habitat';
-  };
-
-  /* ---------- bottom console ---------- */
-  H.drawConsole = function (ctx, run) {
-    const W = G.W, bh = G.bottomH(), y0 = G.H - bh;
-    G.block(0, y0 - 2, W, bh + 2);
-    D.plate(ctx, 0, y0, W, bh + 2);
-    D.hazard(ctx, 1, y0 - 2, W - 2, 2, 13, 0);
-    ctx.save(); ctx.beginPath(); ctx.rect(0, y0, W, bh); ctx.clip();
-    const sel = G.sel;
-    const cy = G.H - G.CONSOLE_H;   // content is laid out for the full panel and slides with it
-    ctx.translate(0, y0 - cy);
-    let drawn = false;
-    if (sel && sel.kind === 'body') {
-      const b = S.getBody(run, sel.id);
-      if (b && b.found) { if (b.site) H.siteConsole(ctx, run, b, cy); else if (b.claimed) H.colonyConsole(ctx, run, b, cy); else H.surveyConsole(ctx, run, b, cy); drawn = true; }
-      else G.sel = null;
-    } else if (sel && sel.kind === 'route') {
-      const r = S.getRoute(run, sel.id);
-      if (r) { H.routeConsole(ctx, run, r, cy); drawn = true; } else G.sel = null;
-    }
-    ctx.restore();
-    if (!drawn || G.selT < 0.15) H.ticker(ctx, run, G.H - G.TICKER_H + 2);
-  };
-  function closeBtn(ctx, cy) { G.button(ctx, G.W - 14, cy + 4, 11, 10, 'X', () => { G.sel = null; G.popup = null; AS.Sfx.play('click'); }, { tip: 'CLOSE (ESC).' }); }
-
-  H.ticker = function (ctx, run, y) {
-    const P = S.prime(run);
-    let x = 5;
-    TS(ctx, 'PRIME PAYS', x, y + 1, 5);
-    x += 44;
-    for (const g of AS.GOOD_KEYS) {
-      const m = run.market[g];
-      ctx.drawImage(AS.Spr.goods[g], x, y + 1);
-      const pc = m.swing * m.spike > 1.05 ? 22 : m.swing * m.spike < 0.95 ? 17 : 13;
-      const tx = m.price.toFixed(m.price < 10 ? 1 : 0);
-      TS(ctx, tx, x + 7, y + 1, pc);
-      const ar = m.trend > 0 ? '^' : m.trend < 0 ? '~' : '';
-      if (ar) TS(ctx, ar, x + 8 + D.tw(tx), y + 1, m.trend > 0 ? 22 : 17);
-      G.tip(x - 1, y - 1, 40, 8, AS.GOODS[g].help + ' ATLAS PRIME PAYS ' + m.price.toFixed(1) + ' EACH. PRICES DROP WHILE YOU SELL A LOT AND RECOVER OVER TIME.' + (m.spikeT > 0 ? ' DEMAND SPIKE ACTIVE.' : m.swingT > 0 ? ' PRICE SWING ACTIVE.' : '') + ' IN STOCK AT PRIME: ' + Math.floor(P.stock[g]) + '.');
-      x += 40;
-    }
-    const idle = S.idleFreighters(run).length;
-    const rx = G.W - 100;
-    if (x < rx - 4) TS(ctx, 'FLEET ' + run.freighters.length + (idle ? ' (' + idle + ' IDLE)' : ''), Math.max(x + 4, rx - 64), y + 1, idle ? 13 : 5);
-    G.button(ctx, rx, y - 2, 96, 10, 'BUY FREIGHTER ' + S.freighterCost(run), () => AS.Act.buyFreighter(), { disabled: run.credits < S.freighterCost(run), onDisabled: () => AS.Act.buyFreighter(), tip: 'NEW FREIGHTER (F). THEN CLICK A ROUTE AND PRESS + TO PUT IT TO WORK.' });
-  };
-
-  /* ---------- world console ---------- */
-  H.colonyConsole = function (ctx, run, b, y0) {
-    const cap = S.storageCap(run, b);
-    const sw = 32 * b.slotsN + 4, sx = 4, sy = y0 + 4;
-    const gr = GROUND[b.kind] || GROUND.dwarf;
-    D.frame(ctx, sx, sy, sw, 52, 1, 0);
-    for (let i = 0; i < 18; i++) D.rect(ctx, sx + 2 + Math.floor(U.hash2(i, 1, b.id) * (sw - 4)), sy + 2 + Math.floor(U.hash2(i, 2, b.id) * 18), 1, 1, U.hash2(i, b.id, 9) < 0.5 ? 3 : 5);
-    D.rect(ctx, sx + 1, sy + 40, sw - 2, 11, gr[0]);
-    D.dither(ctx, sx + 1, sy + 40, sw - 2, 11, gr[1], 5);
-    for (let i = 0; i < b.slotsN; i++) {
-      const f = b.fac[i], x = sx + 2 + i * 32, y = sy + 20;
-      const hov = G.pointIn(G.mouse, x, y, 32, 32);
-      const isPop = G.popup && G.popup.slot === i && G.popup.bodyId === b.id;
-      if (f && f.build > 0) {
-        ctx.drawImage(AS.Spr.slot, x, y);
-        AS.Spr.drawScaffold(ctx, x, y, f.type, 1 - f.build / Math.max(0.01, f.buildT), G.time);
-        if (Math.random() < 0.4) G.uiSparks.push({ x: x + 6 + Math.random() * 20, y: y + 4 + Math.random() * 22, vx: (Math.random() - 0.5) * 30, vy: -Math.random() * 30, life: 0.4 });
-      } else {
-        ctx.drawImage(f ? AS.Spr.fac[f.type] : AS.Spr.slot, x, y);
-        if (f) H.facAnim(ctx, run, b, f, x, y);
-      }
-      if (hov || isPop) { ctx.fillStyle = PAL[isPop ? 13 : 6]; ctx.fillRect(x, y, 32, 1); ctx.fillRect(x, y + 31, 32, 1); ctx.fillRect(x, y, 1, 32); ctx.fillRect(x + 31, y, 1, 32); }
-      if (f) {
-        const [st, sc] = STATUS_TXT[f.status] || STATUS_TXT.ok;
-        TS(ctx, AS.FAC[f.type].short, x + 16, sy + 3 + (i % 2) * 7, 7, 'center');
-        if (f.build > 0) TS(ctx, Math.ceil(f.build) + 'S', x + 16, y - 7 + (i % 2 ? 0 : 0), 12, 'center');
-        else if (f.status !== 'ok' && Math.floor(G.time * 2 + i) % 2 === 0) T(ctx, st, x + 16, y + 11, sc, { align: 'center' });
-        G.tip(x, y, 32, 32, AS.FAC_HELP[f.type] + ' STATUS: ' + AS.STATUS_HELP[f.status] + ' CLICK FOR OPTIONS.');
-      } else G.tip(x, y, 32, 32, 'EMPTY SLOT. CLICK TO BUILD.');
-      G.btns.push({ x, y, w: 32, h: 32, fn: () => { G.popup = { kind: f ? 'fac' : 'build', bodyId: b.id, slot: i, t: G.time }; AS.Sfx.play('click'); if (AS.Onboard) AS.Onboard.event('slot', { body: b, slot: i }); } });
-    }
-    const x = sx + sw + 7;
-    T(ctx, b.name, x, y0 + 4, 12);
-    if (b.traits.length) TS(ctx, b.traits.map(t => AS.TRAITS[t].short).join(' '), x + D.tw(b.name) + 6, y0 + 4, 29);
-    G.tip(x, y0 + 3, 90, 8, b.traits.length ? b.traits.map(t => AS.TRAITS[t].name + ': ' + AS.TRAITS[t].desc).join(' ') : b.blurb);
-    const capPop = S.housing(run, b);
-    TS(ctx, 'COLONISTS ' + Math.floor(b.pop) + '/' + capPop, x, y0 + 14, 7);
-    G.tip(x, y0 + 13, 90, 8, 'COLONISTS / HOUSING. FED WORLDS GROW UP TO THE HOUSING LIMIT. HABITATS ADD ROOM.');
-    const fr = S.foodRate(run, b);
-    ctx.drawImage(AS.Spr.goods.food, x, y0 + 22);
-    TS(ctx, b.starving ? 'STARVING!' : 'FED ' + Math.floor(U.safeDiv(b.stock.food, fr, 0)) + 'S', x + 7, y0 + 23, b.starving ? 17 : 22);
-    G.tip(x, y0 + 21, 90, 8, 'THIS WORLD EATS ' + fr.toFixed(2) + ' FOOD/S. THE NUMBER IS HOW LONG ITS FOOD LASTS WITHOUT NEW DELIVERIES.');
-    TS(ctx, 'TAX +' + (b.pop * C.colony.taxPer * run.mods.tax).toFixed(1) + '/S', x, y0 + 32, 6);
-    TS(ctx, 'DEPOSITS', x, y0 + 41, 5);
-    let dx = x;
-    for (const g of ['ore', 'ice', 'gas']) if (b.dep[g]) { ctx.drawImage(AS.Spr.goods[g], dx, y0 + 48); TS(ctx, b.dep[g].toFixed(1), dx + 7, y0 + 49, AS.GOODS[g].col); dx += 26; }
-    G.tip(x, y0 + 40, 90, 16, 'WHAT CAN BE EXTRACTED HERE. HIGHER = FASTER MINES, DRILLS AND SKIMMERS.');
-    if (b.boomT > 0) TS(ctx, 'RICH SEAM ' + Math.ceil(b.boomT) + 'S', x, y0 + 60, 22);
-    else if (b.blightT > 0) TS(ctx, 'BLIGHT ' + Math.ceil(b.blightT) + 'S', x, y0 + 60, 17);
-    else TS(ctx, b.prime ? 'CAPITAL: SELLS GOODS' : 'CLICK A SLOT TO BUILD', x, y0 + 60, 4);
-    G.button(ctx, x + 100, y0 + 30, 62, 11, G.link ? 'PICK A WORLD' : 'NEW ROUTE', () => { G.link = { from: b.id }; G.popup = null; AS.Sfx.play('click'); G.showToast('CLICK THE WORLD TO CONNECT ' + b.name + ' TO', 13); }, { active: !!G.link, tip: 'ADD ANOTHER FREIGHT ROUTE FROM THIS WORLD. NEW WORLDS ARE LINKED TO THE CAPITAL AUTOMATICALLY.' });
-    const kx = G.W - 104;
-    D.rect(ctx, kx - 5, y0 + 4, 1, G.CONSOLE_H - 8, 0);
-    TS(ctx, 'STOCK  MAX ' + cap, kx, y0 + 5, 5);
-    G.tip(kx, y0 + 3, 90, 8, 'GOODS STORED HERE. THE WHITE TICK IS WHAT THIS WORLD KEEPS FOR ITSELF; ANYTHING ABOVE IT IS SHIPPED OUT.');
-    AS.GOOD_KEYS.forEach((g, i) => {
-      const y = y0 + 14 + i * 9, v = b.stock[g];
-      ctx.drawImage(AS.Spr.goods[g], kx, y);
-      TS(ctx, AS.GOODS[g].name, kx + 7, y + 1, 6);
-      TS(ctx, Math.floor(v), kx + 52, y + 1, v >= cap - 0.5 ? 13 : 7, 'right');
-      if (b.incoming[g] >= 1) TS(ctx, '+' + Math.floor(b.incoming[g]), kx + 55, y + 1, 22);
-      const bw = Math.round(U.clamp(v / cap, 0, 1) * 20);
-      D.rect(ctx, kx + 74, y + 1, 20, 4, 1);
-      if (bw) D.rect(ctx, kx + 74, y + 1, bw, 4, AS.GOODS[g].col);
-      if (b.keep[g] >= 1) D.rect(ctx, kx + 74 + Math.min(19, Math.round(U.clamp(b.keep[g] / cap, 0, 1) * 20)), y, 1, 6, 31);
-      G.tip(kx, y - 1, 96, 9, AS.GOODS[g].name + ': ' + Math.floor(v) + ' STORED' + (b.incoming[g] >= 1 ? ', ' + Math.floor(b.incoming[g]) + ' ON THE WAY' : '') + (b.keep[g] >= 1 ? ', KEEPING ' + Math.floor(b.keep[g]) + ' FOR LOCAL USE' : '') + '.');
-    });
-    closeBtn(ctx, y0);
-  };
-
-  H.facAnim = function (ctx, run, b, f, x, y) {
-    const p = (px, py, c) => { ctx.fillStyle = PAL[c]; ctx.fillRect(x + px, y + py, 1, 1); };
-    if (f.status !== 'ok') { if (f.status === 'broken' && Math.random() < 0.3) p(8 + Math.floor(Math.random() * 16), 10 + Math.floor(Math.random() * 10), 18); return; }
-    const t = G.time, fr = Math.floor(t * 6 + b.id);
-    switch (f.type) {
-      case 'mine': p(22 + [0, 2, 0, -2][fr % 4], 4 + [-2, 0, 2, 0][fr % 4], 7); p(6 + (fr % 4), 25, 12); break;
-      case 'drill': p(20, 6 + (fr % 18), 13); break;
-      case 'skimmer': if (fr % 2) p(22, 1, 13); break;
-      case 'smelter':
-        for (const [sx, sy] of [[8, 0], [15, 3]]) for (let k = 0; k < 3; k++) {
-          const ph = (t * 0.6 + k / 3 + b.id * 0.1) % 1;
-          const px = sx + Math.round(Math.sin(ph * 5 + k) + ph * 4), py = sy - Math.round(ph * 9);
-          if (py >= -6) { ctx.fillStyle = PAL[ph < 0.5 ? 5 : 4]; ctx.fillRect(x + px, y + py, 2, 1); }
-        }
-        if (fr % 3 === 0) p(20, 24, 14);
-        break;
-      case 'agri': if (fr % 4 === 0) p(10 + (fr * 7) % 12, 15 + (fr * 3) % 5, 22); break;
-      case 'fab': if (fr % 3 === 0) { p(13 + (fr * 5) % 6, 24, 14); p(14 + (fr * 5) % 6, 23, 13); } break;
-      case 'habitat': if (fr % 7 === 0) p(11 + (fr % 4) * 3, 9 + (fr % 5) * 3, 2); break;
-    }
-  };
-
-  H.surveyConsole = function (ctx, run, b, y0) {
-    T(ctx, b.name + ' - UNCLAIMED', 6, y0 + 5, 12);
-    TS(ctx, b.blurb, 6, y0 + 14, 6);
-    TS(ctx, 'DEPOSITS', 6, y0 + 24, 5);
-    ['ore', 'ice', 'gas'].forEach((g, i) => {
-      const y = y0 + 32 + i * 9;
-      ctx.drawImage(AS.Spr.goods[g], 8, y);
-      TS(ctx, AS.GOODS[g].name, 15, y + 1, b.dep[g] ? AS.GOODS[g].col : 3);
-      D.bar(ctx, 40, y, 60, 6, (b.dep[g] || 0) / 1.8, AS.GOODS[g].col);
-      TS(ctx, (b.dep[g] || 0).toFixed(1), 104, y + 1, 6);
-      G.tip(6, y - 1, 116, 9, AS.GOODS[g].help);
-    });
-    const P = S.prime(run);
-    TS(ctx, 'BUILD SLOTS ' + b.slotsN, 132, y0 + 24, 7);
-    TS(ctx, 'DISTANCE TO PRIME ' + Math.round(S.planeDist(b, P)), 132, y0 + 32, 7);
-    G.tip(130, y0 + 31, 110, 8, 'DISTANCE CHANGES AS WORLDS ORBIT. LONGER ROUTES TAKE LONGER AND COST MORE PER TRIP.');
-    b.traits.forEach((t, i) => { TS(ctx, AS.TRAITS[t].name, 132, y0 + 41 + i * 8, 29); G.tip(130, y0 + 40 + i * 8, 110, 8, AS.TRAITS[t].desc); });
-    const wait = b.lostAt > 0 ? Math.ceil(C.colony.reclaimDelay - (run.t - b.lostAt)) : 0;
-    if (b.lostAt > 0) TS(ctx, wait > 0 ? 'LOST WORLD - REOPENS IN ' + wait + 'S' : 'FORMER COLONY - CAN BE RECLAIMED', 132, y0 + 60, wait > 0 ? 17 : 22);
-    const cost = S.claimCost(run, b);
-    const x = Math.max(272, G.W - 200);
-    TS(ctx, 'A NEW CLAIM STARTS WITH', x, y0 + 14, 5);
-    TS(ctx, C.colony.outpostPop + ' COLONISTS, ' + C.colony.outpostFood + ' FOOD, ' + C.economy.claimYield + ' RAW GOODS', x, y0 + 22, 6);
-    TS(ctx, b.dep.ice ? 'CAN FEED ITSELF (DRILL + AGRI)' : 'NO ICE: NEEDS FOOD BY ROUTE', x, y0 + 31, b.dep.ice ? 22 : 18);
-    G.button(ctx, x, y0 + 42, 140, 16, 'CLAIM  ' + cost + ' CR', () => AS.Act.claim(b), { primary: run.credits >= cost && wait <= 0, disabled: run.credits < cost || wait > 0, onDisabled: () => AS.Act.claim(b), tip: 'CLAIM THIS WORLD. THEN DRAG A ROUTE FROM ATLAS PRIME TO IT AND BUILD ON ITS SLOTS.' });
-    H.claimBtn = { x, y: y0 + 42 + (G.H - G.CONSOLE_H - y0), w: 140, h: 16 };
-    closeBtn(ctx, y0);
-  };
-
-  H.routeConsole = function (ctx, run, r, y0) {
-    const A = S.getBody(run, r.a), B = S.getBody(run, r.b);
-    if (!A || !B) { G.sel = null; return; }
-    const d = S.planeDist(A, B), own = S.routeFreighters(run, r);
-    T(ctx, 'ROUTE ' + A.name + ' <> ' + B.name, 6, y0 + 5, 12);
-    TS(ctx, 'DISTANCE ' + Math.round(d) + '   TRIP ' + (d / (C.fleet.speed * run.mods.speed)).toFixed(0) + 'S   COST/TRIP ' + S.tripCost(run, d, A, B).toFixed(1) + ' CR', 6, y0 + 15, 6);
-    G.tip(4, y0 + 14, 240, 8, 'WORLDS ORBIT, SO DISTANCE, TRIP TIME AND COST CHANGE ALL THE TIME.');
-    let moved = 0;
-    for (const [, q] of r.movedLog) moved += q;
-    TS(ctx, 'MOVED IN THE LAST MINUTE: ' + moved + ' UNITS', 6, y0 + 24, 6);
-    if (r.halted > 0 || run.flareT > 0) TS(ctx, 'STOPPED ' + Math.ceil(Math.max(r.halted, run.flareT)) + 'S', 180, y0 + 24, 17);
-    T(ctx, 'FREIGHTERS', 6, y0 + 37, 5);
-    T(ctx, own.length, 56, y0 + 37, 13);
-    G.button(ctx, 68, y0 + 34, 18, 12, '-', () => AS.Act.freighters(r, -1), { disabled: !own.length, tip: 'PARK A FREIGHTER (-). IT WAITS UNTIL YOU ADD IT BACK WITH +.' });
-    G.button(ctx, 88, y0 + 34, 18, 12, '+', () => AS.Act.freighters(r, 1), { primary: true, tip: S.idleFreighters(run).length ? 'PUT AN IDLE FREIGHTER ON THIS ROUTE (+).' : 'NO IDLE FREIGHTERS: + BUYS ONE FOR ' + S.freighterCost(run) + ' CR.' });
-    H.plusBtn = { x: 88, y: y0 + 34 + (G.H - G.CONSOLE_H - y0), w: 18, h: 12 };
-    TS(ctx, 'IDLE ' + S.idleFreighters(run).length, 112, y0 + 37, 6);
-    own.slice(0, 6).forEach((f, i) => {
-      const st = f.state === 'transit' ? (f.load ? 'HAULING ' + f.load : 'EMPTY RUN') : f.state === 'dock' ? 'WAITING' : f.state === 'load' ? 'LOADING' : 'UNLOADING';
-      TS(ctx, '#' + (i + 1) + ' ' + st, 6 + (i % 3) * 70, y0 + 51 + Math.floor(i / 3) * 8, f.load ? 7 : 5);
-    });
-    G.tip(4, y0 + 49, 210, 18, 'FREIGHTERS CHOOSE CARGO THEMSELVES: SURPLUS GOES WHERE IT IS NEEDED; EVERYTHING ELSE HEADS TO ATLAS PRIME TO BE SOLD.');
-    const bx = G.W - 140;
-    G.button(ctx, bx, y0 + 46, 124, 13, 'CLOSE ROUTE  +' + Math.round(r.cost * C.economy.routeRefund) + ' CR', () => AS.Act.removeRoute(r), { col: 18, tip: 'CLOSE THIS ROUTE. HALF THE BUILD COST COMES BACK; ITS FREIGHTERS BECOME IDLE.' });
-    closeBtn(ctx, y0);
-  };
-
-  H.siteConsole = function (ctx, run, b, y0) {
-    const M = C.mega;
-    T(ctx, M.name + ' - MEGAPROJECT', 6, y0 + 5, 13);
-    TS(ctx, S.lastSystem(run) ? 'FINAL GATE: FINISH ALL ' + M.stages.length + ' STAGES TO WIN THE RUN' : 'FINISH ALL ' + M.stages.length + ' STAGES TO WARP TO SYSTEM ' + (run.sys + 2), 6, y0 + 15, 6);
-    M.stages.forEach((st0, i) => {
-      const st = { name: st0.name, req: S.stageReq(run, i) };
-      const x = 6 + i * 118, y = y0 + 25;
-      const doneSt = i < run.mega.stage || run.mega.state === 'done', cur = i === run.mega.stage && run.mega.state === 'active';
-      D.frame(ctx, x, y, 112, 42, cur ? 2 : 1, cur ? 12 : doneSt ? 21 : 3);
-      TS(ctx, (i + 1) + ' ' + st.name + (doneSt ? '  DONE' : ''), x + 4, y + 3, doneSt ? 22 : cur ? 13 : 5);
-      Object.keys(st.req).forEach((g, k) => {
-        const yy = y + 12 + k * 9, need = st.req[g], got = doneSt ? need : cur ? Math.min(need, run.mega.done[g]) : 0;
-        ctx.drawImage(AS.Spr.goods[g], x + 4, yy);
-        D.bar(ctx, x + 11, yy, 56, 6, got / need, doneSt ? 21 : AS.GOODS[g].col);
-        TS(ctx, Math.floor(got) + '/' + need, x + 108, yy + 1, 7, 'right');
-      });
-    });
-    const links = run.routes.filter(r => r.a === b.id || r.b === b.id);
-    const fl = links.reduce((n, r) => n + S.routeFreighters(run, r).length, 0);
-    const x = Math.min(G.W - 110, 362);
-    TS(ctx, 'ROUTES IN ' + links.length, x, y0 + 26, 7);
-    TS(ctx, 'FREIGHTERS ' + fl, x, y0 + 35, 7);
-    TS(ctx, 'PAYS ' + Math.round(M.payFrac * 100 * (run.perks.gatefund ? 2 : 1)) + '% OF PRICE', x, y0 + 44, 6);
-    TS(ctx, 'DRAG A ROUTE FROM', x, y0 + 54, 4);
-    TS(ctx, 'ANY WORLD TO HERE', x, y0 + 61, 4);
-    G.tip(x, y0 + 24, 100, 44, 'GOODS ATLAS PRIME RECEIVES ARE FORWARDED HERE. DIRECT ROUTES FROM PRODUCING WORLDS AND MORE FREIGHTERS ON THESE ROUTES SPEED IT UP.');
-    closeBtn(ctx, y0);
-  };
-
-  /* ---------- pop-ups above the console ---------- */
-  H.drawPopup = function (ctx, run) {
-    const pu = G.popup;
-    if (!pu) return;
-    const b = S.getBody(run, pu.bodyId);
-    if (!b || !b.claimed || !G.sel || G.sel.kind !== 'body' || G.sel.id !== b.id || G.selT < 1) { G.popup = null; return; }
-    const top = G.H - G.CONSOLE_H;
-    const sx = 6 + pu.slot * 32;
-    const k = U.easeOut(U.clamp((G.time - (pu.t || 0)) * 8, 0, 1));
-    if (pu.kind === 'build') {
-      if (b.fac[pu.slot]) { G.popup = null; return; }
-      const w = 212, h = AS.FAC_KEYS.length * 11 + 16;
-      const x = U.clamp(sx - 8, 2, G.W - w - 2), y = Math.round(top - h - 3 + (1 - k) * 10);
-      D.plate(ctx, x, y, w, h);
-      G.block(x, y, w, h);
-      T(ctx, 'BUILD IN SLOT ' + (pu.slot + 1), x + 6, y + 5, 12);
-      H.buildRows = [];
-      const rec = H.recommend(run, b);
-      AS.FAC_KEYS.forEach((key, i) => {
-        const F = AS.FAC[key], yy = y + 14 + i * 11;
-        const noDep = F.deposit && !(b.dep[F.deposit] > 0), poor = run.credits < F.cost;
-        if (!noDep && G.pointIn(G.mouse, x + 3, yy, w - 6, 11)) D.rect(ctx, x + 3, yy, w - 6, 11, 3);
-        const best = !noDep && key === rec;
-        if (best) D.rect(ctx, x + 3, yy, w - 6, 11, 20);
-        TS(ctx, F.name, x + 7, yy + 3, noDep ? 3 : poor ? 5 : 7);
-        if (best) TS(ctx, 'BEST', x + 7 + D.tw(F.name) + 4, yy + 3, 13);
-        TS(ctx, noDep ? 'NO DEPOSIT' : AS.FAC_DESC[key], x + 92, yy + 3, noDep ? 16 : 5);
-        if (!noDep) TS(ctx, F.cost, x + w - 7, yy + 3, poor ? 17 : 13, 'right');
-        G.btns.push({ x: x + 3, y: yy, w: w - 6, h: 11, fn: () => AS.Act.build(b, pu.slot, key) });
-        H.buildRows.push({ key, x: x + 3, y: yy, w: w - 6, h: 11 });
-        G.tip(x + 3, yy, w - 6, 11, noDep ? 'THIS WORLD HAS NO ' + AS.GOODS[F.deposit].name + ' DEPOSIT.' : AS.FAC_HELP[key] + ' COST ' + F.cost + ', UPKEEP ' + F.upkeep.toFixed(2) + '/S, BUILD TIME ' + S.buildTime(key) + 'S.');
-      });
-    } else {
-      const f = b.fac[pu.slot];
-      if (!f) { G.popup = null; return; }
-      const F = AS.FAC[f.type];
-      const w = 170, h = 46, x = U.clamp(sx - 8, 2, G.W - w - 2), y = Math.round(top - h - 3 + (1 - k) * 10);
-      D.plate(ctx, x, y, w, h);
-      G.block(x, y, w, h);
-      T(ctx, F.name, x + 6, y + 5, 12);
-      TS(ctx, AS.FAC_DESC[f.type] + '  UPKEEP ' + S.facUpkeep(run, b, f).toFixed(2) + '/S', x + 6, y + 14, 6);
-      const [st, sc] = STATUS_TXT[f.status] || STATUS_TXT.ok;
-      TS(ctx, 'STATUS ' + st + (f.broken > 0 ? ' ' + Math.ceil(f.broken) + 'S' : f.build > 0 ? ' ' + Math.ceil(f.build) + 'S' : ''), x + 6, y + 23, sc);
-      G.button(ctx, x + 6, y + 31, 110, 11, 'DEMOLISH +' + Math.round(F.cost * C.economy.demolishRefund) + ' CR', () => AS.Act.demolish(b, pu.slot), { col: 18, tip: 'REMOVE IT TO FREE THE SLOT. 40% OF THE COST COMES BACK.' });
-    }
   };
 })(globalThis.AS = globalThis.AS || {});

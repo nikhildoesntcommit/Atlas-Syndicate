@@ -1,137 +1,121 @@
-/* ATLAS SYNDICATE v4 — render/fx.js
-   Turns simulation events into juice: particles, floating credits, shake, flashes and sounds.
-   Purely visual: never touches simulation state. */
+/* ATLAS SYNDICATE v5 — render/fx.js
+   Turns simulation events into juice: battle flashes and dice, construction sparks, floating income,
+   capture rings, screen shake and sound. Purely visual: never touches simulation state. */
 (function (AS) {
   'use strict';
 
-  const U = AS.U, S = AS.S, G = AS.G, W = AS.World, C = AS.CONFIG;
+  const U = AS.U, S = AS.S, G = AS.G, C = AS.CONFIG;
   const FX = AS.FX = {};
-  G.uiSparks = [];
+  const Gal = () => AS.Gal;
 
   FX.shake = function (amt) { if (G.settings && G.settings.shake) G.shake = Math.max(G.shake, amt); };
+  FX.float = function (view, x, y, text, col, t, big) { G.floats.push({ view, x, y, text, col, t: t || 1.4, max: t || 1.4, big }); };
 
-  FX.update = function (dt) {
+  FX.update = function (dt, run) {
     for (const p of G.parts) { p.x += (p.vx || 0) * dt; p.y += (p.vy || 0) * dt; p.vy = (p.vy || 0) + (p.g || 0) * dt; p.life -= dt; }
-    G.parts = G.parts.filter(p => p.life > 0 && (p.run === G.run || p.run === G.demo));
+    G.parts = G.parts.filter(p => p.life > 0);
+    if (G.parts.length > 900) G.parts.splice(0, G.parts.length - 900);
     for (const f of G.floats) f.t -= dt;
-    G.floats = G.floats.filter(f => f.t > 0 && (f.run === G.run || f.run === G.demo));
-    for (const s of G.uiSparks) { s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 90 * dt; s.life -= dt; }
-    G.uiSparks = G.uiSparks.filter(s => s.life > 0);
+    G.floats = G.floats.filter(f => f.t > 0);
     if (G.shake > 0) G.shake = Math.max(0, G.shake - dt * 2.2);
-    if (G.flash > 0) G.flash = Math.max(0, G.flash - dt * 1.5);
-    // numbers count towards their real value
-    const run = G.attract ? G.demo : G.run;
+    if (G.flash > 0) G.flash = Math.max(0, G.flash - dt * 2);
     if (run) {
+      const f = run.factions[0];
       const k = 1 - Math.exp(-dt * 7);
-      G.disp.credits += (run.credits - G.disp.credits) * k;
-      if (Math.abs(run.credits - G.disp.credits) < 1) G.disp.credits = run.credits;
-      G.disp.conf += (run.conf - G.disp.conf) * k;
-      G.disp.q += (run.qIncome - G.disp.q) * k;
-      G.scoreT = (G.scoreT || 0) - dt;
-      if (G.scoreT <= 0) { G.scoreT = 0.25; G.scoreNow = S.computeScore(run).total; }
-      G.disp.score = (G.disp.score || 0) + ((G.scoreNow || 0) - (G.disp.score || 0)) * k;
-      if (run.qIncome < G.disp.q - 1) G.disp.q = run.qIncome;
+      G.disp.credits += (f.credits - G.disp.credits) * k;
+      if (Math.abs(f.credits - G.disp.credits) < 1) G.disp.credits = f.credits;
     }
   };
-  FX.drawUiSparks = function (ctx) {
-    for (const s of G.uiSparks) { ctx.fillStyle = AS.PALETTE[s.life > 0.25 ? 14 : 12]; ctx.fillRect(Math.round(s.x), Math.round(s.y), 1, 1); }
+  /** Floats live in screen space for the system view and in galaxy space for the map. */
+  FX.drawFloats = function (ctx, view) {
+    for (const f of G.floats) {
+      if (f.view !== view) continue;
+      const k = 1 - f.t / f.max;
+      let x = f.x, y = f.y - k * 12;
+      if (view === 'galaxy') { const p = G.toScreen(f.x, f.y); x = p.x; y = p.y - 18 - k * 10; }
+      if (k > 0.75 && Math.floor(f.t * 20) % 2) continue;
+      AS.Draw.text(ctx, f.text, Math.round(x), Math.round(y), f.col, { align: 'center', big: f.big });
+    }
   };
 
-  function float(run, x, y, text, col, t, big) { G.floats.push({ run, x, y, text, col, t: t || 1.4, max: t || 1.4, big }); }
-
-  /** live = this run is the player's (sounds and shake on). */
+  /** live = this is the player's game (sounds and shake on). */
   FX.consume = function (run, live) {
     const snd = name => { if (live) AS.Sfx.play(name); };
+    const vis = S.visibility(run, 0);
+    const inSys = id => G.view === 'system' && G.sysId === id;
+    const L = G.view === 'system' && G.sysId >= 0 ? AS.SysView.layout(run, run.systems[G.sysId], G.time) : null;
     for (const e of run.fx) {
-      const b = e.id ? S.getBody(run, e.id) : null;
+      const s = e.sys !== undefined ? run.systems[e.sys] : null;
+      const mine = e.owner === 0;
       switch (e.type) {
-        case 'claim':
-          if (b) { W.burst(run, b.sx, b.sy, 30, [14, 13, 12, 7], 30, 4); W.ring(run, b.sx, b.sy, b.size, b.size + 18, 0.8, 13); }
-          snd('claim'); break;
-        case 'build': snd('build'); if (b) W.spark(run, b.sx, b.sy - b.size * 0.5, 6); break;
-        case 'built': snd('built'); if (b) W.burst(run, b.sx, b.sy, 8, [13, 12, 6], 14, 3, 0.5); break;
-        case 'demolish': snd('remove'); break;
-        case 'route': snd('route'); break;
-        case 'launch': snd('depart'); break;
-        case 'arrive': break;
-        case 'pay':
-          if (b && e.value >= 1) float(run, b.sx, b.sy - b.size - 6, '+' + e.value, 13, 1.4);
-          snd('sale'); break;
-        case 'drop':
-          if (b) W.burst(run, b.sx, b.sy - b.size, 4, [6, 5, 4], 9, 6, 0.5);
-          if (b && b.site) float(run, b.sx, b.sy - 26, '+' + e.load, 14, 1.2);
-          snd(b && b.site ? 'megaDrop' : 'arrive'); break;
-        case 'lost':
-          if (b) { W.burst(run, b.sx, b.sy, 70, [17, 18, 12, 4, 9], 50, 10, 1.2); W.ring(run, b.sx, b.sy, 4, 30, 1, 17); }
-          if (live) { FX.shake(1.2); AS.Sfx.play('lost'); } break;
-        case 'starve': snd('warning'); break;
-        case 'quarter': snd(e.met ? 'quarterGood' : 'quarterBad'); if (live && !e.met) FX.shake(0.6); break;
-        case 'contract': snd(e.ok ? 'contract' : 'bad'); if (e.ok) { const P = S.prime(run); float(run, P.sx, P.sy - 20, '+' + e.value, 14, 2, true); } break;
-        case 'offer': snd('notice'); break;
-        case 'discover':
-          if (b) { W.ring(run, b.sx, b.sy, 2, 30, 1.4, 13); W.ring(run, b.sx, b.sy, 2, 18, 1.0, 12); }
-          snd('discover'); break;
-        case 'warn': snd('alarm'); if (live) FX.shake(0.3); break;
-        case 'cargo': {
-          const f = run.freighters.find(x => x.id === e.fid), p = f && W.freighterPos(run, f, G.time);
-          if (p) W.burst(run, p.x, p.y, 24, [17, 18, 4, 3], 30, 4);
-          snd('bad'); break;
-        }
-        case 'meteor':
-          if (b) {
-            for (let i = 0; i < 6; i++) W.burst(run, b.sx + (Math.random() - 0.5) * b.size * 2, b.sy + (Math.random() - 0.5) * b.size, 10, [14, 13, 18, 17, 4], 26, 8, 0.9);
-            W.ring(run, b.sx, b.sy, b.size, b.size + 26, 0.9, 18);
+        case 'yield':
+          if (!s || s.owner !== 0) break;
+          if (inSys(s.id) && L) {
+            FX.float('system', L.station.x, L.station.y - 30, '+' + e.v, 13, 1.6, true);
+            const per = s.lastYield ? s.lastYield.per : [];
+            per.forEach((u, i) => { if (u > 0 && L.nodes[i]) FX.float('system', L.nodes[i].x, L.nodes[i].y - L.nodes[i].size - 14, '+' + u, AS.RES[s.planets[i].type].col, 1.2); });
+          } else if (G.view === 'galaxy') FX.float('galaxy', s.x, s.y, '+' + e.v, 13, 1.3);
+          break;
+        case 'build': case 'line': case 'repair': case 'ship': case 'plat':
+          if (mine) snd(e.type === 'line' ? 'route' : e.type === 'repair' ? 'built' : 'build');
+          if (mine && L && inSys(e.sys)) {
+            const n = e.planet !== undefined ? L.nodes[e.planet] : L.station;
+            if (n) { Gal().spark('system', n.x, n.y - 4, 14); Gal().burst('system', n.x, n.y, 10, [13, 12, 6], 14, 3, 0.5); }
           }
-          if (live) { FX.shake(1.6); G.flash = Math.max(G.flash, 0.25); AS.Sfx.play('impact'); } break;
-        case 'flare': if (live) { FX.shake(1.0); G.flash = Math.max(G.flash, 0.5); AS.Sfx.play('flare'); } break;
-        case 'storm': snd('event'); break;
-        case 'breakdown': case 'blight': snd('event'); if (b) W.burst(run, b.sx, b.sy, 10, [5, 4, 3], 12, 6); break;
-        case 'boom': snd('good'); if (b) W.burst(run, b.sx, b.sy, 16, [13, 12, 22], 18, 6); break;
-        case 'event': break;
-        case 'perk': snd('perk'); break;
-        case 'boost': snd('boost'); if (live) { FX.shake(0.25); G.boostFx = 0.6; } break;
-        case 'deflect':
-          if (b) { W.burst(run, b.sx, b.sy - b.size - 14, 40, [31, 14, 13, 12, 4], 40, 2, 1); W.ring(run, b.sx, b.sy - b.size - 14, 2, 24, 0.7, 14); }
-          snd('deflect'); if (live) FX.shake(0.4); break;
-        case 'warp':
-          G.warpFx = { t: 0, run }; G.finale = null; G.sel = null; G.popup = null; G.link = null;
-          AS.Spr.planets = {};
-          if (live) { AS.Sfx.play('warp'); FX.shake(1.2); }
-          G.fitView(run); break;
-        case 'megaUnlock':
-          if (b) { W.ring(run, b.sx, b.sy, 4, 50, 1.6, 13); W.ring(run, b.sx, b.sy, 4, 34, 1.2, 14); }
-          if (live) { FX.shake(0.8); AS.Sfx.play('megaUnlock'); if (AS.Music) AS.Music.sting(); }
           break;
-        case 'megaStage':
-          if (b) { W.burst(run, b.sx, b.sy, 60, [14, 13, 12, 6], 40, 6, 1.2); W.ring(run, b.sx, b.sy, 20, 46, 1.2, 14); }
-          if (live) { FX.shake(1.0); AS.Sfx.play('megaStage'); }
+        case 'buy': if (mine) snd('buy'); break;
+        case 'recruit': if (mine) snd('recruit'); break;
+        case 'unline': if (mine) snd('remove'); break;
+        case 'depart': if (mine) snd(e.mode === 'move' ? 'depart' : 'charge'); break;
+        case 'arrive': break;
+        case 'battle':
+          if (s && (vis[s.id] || e.def === 0 || e.owner === 0)) {
+            Gal().ring('galaxy', s.x, s.y, 2, 14, 0.6, 17);
+            if (e.def === 0 || e.owner === 0) { snd('battle'); if (e.size > 40) FX.shake(0.7); }
+          }
           break;
-        case 'megaDone':
-          G.finale = { run, t: 0, id: e.id };
-          if (live) AS.Sfx.play('megaDone');
+        case 'round':
+          if (!s) break;
+          G.dice[e.sys] = { ad: e.ad, dd: e.dd, al: e.al, dl: e.dl, at: G.time };
+          if (vis[s.id]) {
+            Gal().burst('galaxy', s.x, s.y, 6 + Math.min(14, e.al + e.dl), [31, 14, 18, 17, 4], 16, 4, 0.5);
+            if (e.owner === 0 || e.def === 0) { snd('hit'); if (e.al + e.dl > 6) FX.shake(0.45); }
+            if (inSys(e.sys) && L) { Gal().burst('system', L.cx + (Math.random() - 0.5) * 120, L.cy + (Math.random() - 0.5) * 40, 14, [31, 14, 18, 17], 22, 4, 0.6); FX.shake(0.3); }
+          }
           break;
+        case 'captured':
+          if (s) {
+            Gal().ring('galaxy', s.x, s.y, 2, 26, 1.0, Gal().fcol(run, e.owner));
+            Gal().burst('galaxy', s.x, s.y, 40, [31, 14, 13, 12, 4], 30, 6, 1.0);
+            if (e.owner === 0) { snd('capture'); FX.shake(0.9); FX.float('galaxy', s.x, s.y, 'CAPTURED', 13, 2.2, true); }
+            else if (e.prev === 0) { snd('lost'); FX.shake(1.4); G.flash = Math.max(G.flash, 0.3); }
+            else if (vis[s.id] && live) AS.Sfx.play('distant');
+          }
+          break;
+        case 'battleEnd':
+          if (s && (e.winner === 0 || e.loser === 0)) { snd(e.winner === 0 ? 'good' : 'bad'); Gal().ring('galaxy', s.x, s.y, 4, 20, 0.8, e.winner === 0 ? 22 : 17); }
+          break;
+        case 'raidEnd': if (e.def === 0) snd('bad'); else if (e.owner === 0) snd('good'); break;
+        case 'retreat': if (e.owner === 0) snd('remove'); break;
+        case 'bought': if (mine) { snd('claim'); if (s) Gal().ring('galaxy', s.x, s.y, 2, 22, 1.0, 13); } break;
+        case 'eliminated':
+          if (live) {
+            AS.Sfx.play(e.owner === 0 ? 'lost' : 'eliminated');
+            FX.shake(e.owner === 0 || e.by === 0 ? 1.6 : 0.6);
+            const L2 = run.factions[e.owner], B = run.factions[e.by];
+            G.notices.push({ title: 'ELIMINATED', text: L2.short + ' BY ' + B.short, t: 5, max: 5 });
+          }
+          break;
+        case 'warn': if (e.fid === 0) snd(e.kind === 'inc' ? 'alarm' : 'warning'); break;
+        case 'eventWarn': snd('notice'); break;
+        case 'event': snd('event'); if (live) FX.shake(0.3); break;
+        case 'draft': snd('perk'); break;
+        case 'card': if (mine) snd('perk'); break;
+        case 'bankrupt': if (mine) { snd('alarm'); G.showToast('BANKRUPT: SOLDIERS DESERT NEXT CYCLE', 17); } break;
+        case 'desert': if (mine) { snd('bad'); G.showToast(e.n + ' SOLDIERS DESERTED', 17); } break;
+        case 'over': break;
       }
     }
     run.fx.length = 0;
-  };
-
-  /** The finale: the gate powers up, shock rings, sparks, a bone-white flash. ~7 s. */
-  FX.updateFinale = function (dt) {
-    const f = G.finale;
-    if (!f) return;
-    f.t += dt;
-    const b = S.getBody(f.run, f.id);
-    if (!b) return;
-    const live = f.run === G.run;
-    if (f.t < 3 && Math.random() < 0.9) W.spark(f.run, b.sx + (Math.random() - 0.5) * 44, b.sy + (Math.random() - 0.5) * 44, 3);
-    for (const [at, r] of [[0.4, 40], [1.2, 60], [2.0, 90], [2.6, 140]]) {
-      if (f.t - dt < at && f.t >= at) {
-        W.ring(f.run, b.sx, b.sy, 20, r, 1.6, at > 2 ? 31 : 13);
-        W.burst(f.run, b.sx, b.sy, 50, [31, 14, 13, 12, 11], 30 + r * 0.6, 4, 1.6);
-        if (live) FX.shake(0.6 + at * 0.4);
-      }
-    }
-    if (f.t - dt < 2.6 && f.t >= 2.6) G.flash = 1;
-    if (live && f.t > 0.3 && f.t < 5) G.focusOn(b.sx, b.sy);
   };
 })(globalThis.AS = globalThis.AS || {});

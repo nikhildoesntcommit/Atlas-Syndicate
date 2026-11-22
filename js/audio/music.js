@@ -1,7 +1,8 @@
-/* ATLAS SYNDICATE v4 — audio/music.js
-   Procedural industrial soundtrack. A look-ahead step sequencer drives five layers that fade in
-   with intensity: 0 drone, 1 machine percussion, 2 bass pulse + struck-metal tones, 3 hats,
-   4 megaproject drive (arpeggio, faster tempo). Low Board confidence adds a dissonant undertone. */
+/* ATLAS SYNDICATE v5 — audio/music.js (v4's sequencer, retargeted)
+   Procedural industrial soundtrack. A look-ahead step sequencer drives layers that fade in with
+   intensity: 0 drone, 1 machine percussion, 2 bass pulse + struck-metal tones, 3 hats (at war),
+   4 drive (arpeggio, faster tempo: you are under attack). Enemy armies massing on your border add
+   a dissonant undertone. */
 (function (AS) {
   'use strict';
 

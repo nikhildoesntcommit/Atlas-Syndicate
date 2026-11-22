@@ -1,6 +1,7 @@
-/* ATLAS SYNDICATE v4 — render/sprites.js
-   All pixel art, generated in code: painter helpers, facilities, freighters, icons, the star,
-   and planets that rotate under a moving day/night terminator. */
+/* ATLAS SYNDICATE v5 — render/sprites.js
+   All pixel art, generated in code (unchanged v4 generators): painter helpers, facility art, freighters,
+   icons, the star, and planets that rotate under a moving day/night terminator. v5 adds faction icons
+   and map status badges in the same style. */
 (function (AS) {
   'use strict';
 
@@ -142,14 +143,21 @@
     },
   };
 
-  /* goods icons: distinct shapes so colour is never the only cue */
+  /* resource icons: distinct shapes so colour is never the only cue */
   const GOOD_ICONS = {
-    ore:   ['.bb..', 'bcbb.', 'bbbba', '.aaa.', '.....'],
-    ice:   ['..v..', '.vqv.', 'vqqqp', '.pqp.', '..p..'],
-    gas:   ['.....', '.uu..', 'uuuuu', 'ttttt', '.....'],
-    alloy: ['.....', '.777.', '66666', '55555', '.....'],
-    food:  ['.m.m.', 'mmmmm', 'mlllm', 'mlllm', '.mmm.'],
-    parts: ['.d.d.', 'ddddd', 'dd.dd', 'ddddd', '.d.d.'],
+    ore:    ['.bb..', 'bcbb.', 'bbbba', '.aaa.', '.....'],
+    energy: ['..qq.', '.qq..', 'qqqq.', '..qq.', '.qq..'],
+    food:   ['.m.m.', 'mmmmm', 'mlllm', 'mlllm', '.mmm.'],
+  };
+  /* faction icons (5x5, drawn in the faction colour) and map badges */
+  const FICON = {
+    atlas:       ['..#..', '.#.#.', '#####', '#...#', '#...#'],
+    warlord:     ['#...#', '.#.#.', '..#..', '.#.#.', '#...#'],
+    merchant:    ['.###.', '#.#..', '.###.', '..#.#', '.###.'],
+    turtle:      ['#####', '#...#', '#.#.#', '.#.#.', '..#..'],
+    opportunist: ['.....', '.###.', '#.#.#', '.###.', '.....'],
+    raider:      ['...#.', '..#..', '.###.', '..#..', '.#...'],
+    neutral:     ['.....', '.###.', '.#.#.', '.###.', '.....'],
   };
   const ICONS = {
     coin: ['.ddd.', 'dcddd', 'dcdde', 'ddddb', '.bbb.'],
@@ -159,7 +167,13 @@
     warn: ['..d..', '.d0d.', '.d0d.', 'ddddd', '.....'],
     lock: ['.666.', '6...6', 'ddddd', 'dd0dd', 'ddddd'],
     star: ['..d..', '.ddd.', 'ddddd', '.d.d.', '.....'],
-    food: GOOD_ICONS.food,
+    swords: ['h...h', '.h.h.', '..h..', '.h.h.', 'h...h'],
+    up: ['..m..', '.mmm.', 'm.m.m', '..m..', '..m..'],
+    wrench: ['.i..i', '.iiii', '.i...', 'i....', 'i....'],
+    shield: ['mmmmm', 'mlllm', 'mlllm', '.mlm.', '..m..'],
+    soldier: ['.7.', '777', '.7.', '7.7'],
+    ship: ['.6..', '6666', '.6..'],
+    plat: ['6.6', '.6.', '6.6'],
   };
 
   /* freighter hull (faces right); pods are painted per frame in rows 2-4, x 4..11 */
@@ -175,7 +189,7 @@
 
   Spr.bake = function () {
     Spr.fac = {};
-    for (const k of AS.FAC_KEYS) Spr.fac[k] = bake('fac:' + k, 32, 32, P => { FAC_ART[k](P); autoOutline(P, 0); });
+    for (const k of Object.keys(FAC_ART)) Spr.fac[k] = bake('fac:' + k, 32, 32, P => { FAC_ART[k](P); autoOutline(P, 0); });
     Spr.slot = bake('slot', 32, 32, P => {
       drawPad(P);
       for (let x = 4; x < 28; x++) if (((x >> 1) & 1) === 0) { P.px(x, 9, 4); P.px(x, 25, 4); }
@@ -191,6 +205,8 @@
     for (const g in GOOD_ICONS) Spr.goods[g] = bakeGrid('good:' + g, GOOD_ICONS[g]);
     Spr.icons = {};
     for (const k in ICONS) Spr.icons[k] = bakeGrid('icon:' + k, ICONS[k]);
+    Spr.ficon = {};   // per faction icon, per palette colour, baked lazily
+    Spr.FICON = FICON;
     Spr.star = bake('star', 40, 40, P => {
       for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) {
         const d = Math.hypot(x - 19.5, y - 19.5);
@@ -206,19 +222,28 @@
     Spr.ready = true;
   };
 
-  /** Freighter: hull plus up to three cargo pods coloured by what it carries. */
-  Spr.drawFreighter = function (ctx, x, y, flip, frame, cargo, load, cap) {
+  /** Freighter: hull plus up to three cargo pods in the colour of the resource it carries. */
+  Spr.drawFreighter = function (ctx, x, y, flip, frame, col, pods) {
     ctx.drawImage(Spr.hull[frame][flip], x, y);
-    if (!load) return;
-    const goods = Object.keys(cargo).filter(g => cargo[g] > 0).sort((a, b) => cargo[b] - cargo[a]);
-    const pods = Math.max(1, Math.min(3, Math.ceil(3 * load / Math.max(1, cap))));
-    for (let i = 0; i < pods; i++) {
-      const g = goods[Math.min(i, goods.length - 1)];
-      const col = AS.GOODS[g] ? AS.GOODS[g].col : 5;
+    for (let i = 0; i < (pods || 0); i++) {
       const px = flip ? x + 16 - 1 - (4 + i * 3) - 1 : x + 4 + i * 3;
       ctx.fillStyle = PAL[col]; ctx.fillRect(px, y + 2, 2, 3);
       ctx.fillStyle = PAL[0]; ctx.fillRect(px, y + 3, 2, 1);
     }
+  };
+  /** Faction icon in a colour (5x5). */
+  Spr.factionIcon = function (key, col) {
+    const k = key + ':' + col;
+    if (!Spr.ficon[k]) Spr.ficon[k] = bake('ficon:' + k, 5, 5, P => { (FICON[key] || FICON.neutral).forEach((r, y) => { for (let x = 0; x < 5; x++) if (r[x] === '#') P.px(x, y, col); }); });
+    return Spr.ficon[k];
+  };
+  /** One pixel die face (7x7) showing v, for the battle readout. */
+  Spr.die = function (ctx, x, y, v, col, pipCol) {
+    ctx.fillStyle = PAL[0]; ctx.fillRect(x, y + 1, 7, 7);
+    ctx.fillStyle = PAL[col]; ctx.fillRect(x, y, 7, 7);
+    ctx.fillStyle = PAL[pipCol];
+    const P = { 1: [[3, 3]], 2: [[1, 1], [5, 5]], 3: [[1, 1], [3, 3], [5, 5]], 4: [[1, 1], [5, 1], [1, 5], [5, 5]], 5: [[1, 1], [5, 1], [3, 3], [1, 5], [5, 5]], 6: [[1, 1], [5, 1], [1, 3], [5, 3], [1, 5], [5, 5]] }[v] || [];
+    for (const [a, b] of P) ctx.fillRect(x + a, y + b, 1, 1);
   };
 
   /** Scaffolding over a facility slot while it is being built (frac 0..1 complete). */
@@ -308,7 +333,7 @@
       P.r(c0 - 2, c0 - 1, 5, 2, 5); P.r(c0 - 2, c0 + 1, 5, 1, 3); P.px(c0, c0 - 2, 13);
       return e.c;
     }
-    const a = lb / 64 * TAU, T = AS.CONFIG.map.tilt;
+    const a = lb / 64 * TAU, T = 0.38;
     const L = [Math.cos(a), Math.sin(a) * T, Math.sin(a) * Math.sqrt(1 - T * T)];
     const tex = texture(b);
     const img = ctx.createImageData(S, S), d = img.data;

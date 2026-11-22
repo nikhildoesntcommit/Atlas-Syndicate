@@ -1,4 +1,10 @@
 .DS_Store
 node_modules/
 *.zip
+
+# presentation material stays out of the repository
 presentation/
+*.pptx
+*.key
+*.mp4
+script.md

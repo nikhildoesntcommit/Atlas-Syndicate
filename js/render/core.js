@@ -1,5 +1,6 @@
-/* ATLAS SYNDICATE v4 — render/core.js
-   Client state (AS.G), the integer-scaled adaptive layout, the camera and immediate-mode UI primitives. */
+/* ATLAS SYNDICATE v5 — render/core.js
+   Client state (AS.G), the integer-scaled adaptive layout (from v4), the galaxy camera and
+   immediate-mode UI primitives: riveted plates, hazard stripes, buttons, tooltips. */
 (function (AS) {
   'use strict';
 
@@ -7,8 +8,8 @@
 
   const G = AS.G = {
     canvas: null, ctx: null, W: 480, H: 270, scale: 1, dpr: 1,
-    mode: 'boot', screen: null, screenT: 0, run: null, demo: null, demoBot: null, demoAcc: 0, demoEndAt: 0,
-    sel: null, selT: 0, drag: null, pan: null, pinch: null, popup: null, pointers: new Map(),
+    mode: 'boot', screen: null, screenT: 0, run: null, demo: null, demoAcc: 0, demoEndAt: 0, view: 'galaxy', sysId: -1,
+    sel: null, selT: 0, drag: null, pan: null, pinch: null, popup: null, order: null, pointers: new Map(), dice: {}, viewT: 0,
     mouse: { x: -99, y: -99, inside: false, down: false }, wm: { x: -99, y: -99 }, touch: false,
     btns: [], tipRegions: [], tipHover: { text: '', t: 0 }, pressed: null, focusField: null,
     cam: { x: 0, y: 0, z: 1, zr: 1, vx: 0, vy: 0, tc: null, anchor: null }, keys: {}, link: null,
@@ -18,10 +19,8 @@
   };
 
   G.HUD_H = 15;
-  G.CONSOLE_H = 74;
-  G.TICKER_H = 12;
-  /** Height of the bottom panel right now (animated). */
-  G.bottomH = () => Math.round(G.TICKER_H + (G.CONSOLE_H - G.TICKER_H) * U.easeOut(U.clamp(G.selT, 0, 1)));
+  G.TICKER_H = 11;
+  G.bottomH = () => G.TICKER_H;
   G.mapBottom = () => G.H - G.bottomH();
 
   /* ---------- layout: pick the largest integer device-pixel scale that keeps the logical view >= the minimum ---------- */
@@ -29,7 +28,7 @@
     if (!G.canvas) return;
     const dpr = G.dpr = Math.max(1, globalThis.devicePixelRatio || 1);
     const dw = Math.floor(globalThis.innerWidth * dpr), dh = Math.floor(globalThis.innerHeight * dpr);
-    const mins = C.view.scales[(G.settings && G.settings.uiScale) || 'large'] || C.view.scales.large;
+    const mins = C.view.scales[(G.settings && G.settings.uiScale) || 'medium'] || C.view.scales.medium;
     let s = Math.max(1, Math.floor(Math.min(dw / mins[0], dh / mins[1])));
     // never go below 480x270 logical
     while (s > 1 && (Math.floor(dw / s) < C.view.minW || Math.floor(dh / s) < C.view.minH)) s--;
@@ -40,7 +39,7 @@
     G.canvas.style.width = (G.W * s / dpr) + 'px';
     G.canvas.style.height = (G.H * s / dpr) + 'px';
     G.ctx.imageSmoothingEnabled = false;
-    if (AS.World && AS.World.onResize) AS.World.onResize();
+    if (AS.Gal && AS.Gal.onResize) AS.Gal.onResize();
   };
 
   /* ---------- camera: smooth zoom (animated between whole-number levels), glides, momentum ---------- */
@@ -53,8 +52,8 @@
   G.clampCam = function () {
     const z = G.cam.zr, M = C.camera.margin;
     const vw = G.W / z, vh = (G.mapBottom() - G.HUD_H) / z;
-    const cx = C.map.cx, cy = C.map.cy;
-    const x0 = cx - 260 - M / z, x1 = cx + 260 + M / z - vw, y0 = cy - 120 - M / z - G.HUD_H / z, y1 = cy + 120 + M / z - vh;
+    const cx = 0, cy = 0;
+    const x0 = cx - 235 - M / z, x1 = cx + 235 + M / z - vw, y0 = cy - 140 - M / z - G.HUD_H / z, y1 = cy + 140 + M / z - vh;
     if (G.cam.x < x0 || G.cam.x > x1) G.cam.vx = 0;
     if (G.cam.y < y0 || G.cam.y > y1) G.cam.vy = 0;
     G.cam.x = x1 < x0 ? (x0 + x1) / 2 : U.clamp(G.cam.x, x0, x1);
@@ -73,22 +72,17 @@
   G.zoomStep = function (d, sx, sy) {
     G.zoomAt(sx === undefined ? G.W / 2 : sx, sy === undefined ? G.mapMidY() : sy, G.cam.z + d);
   };
-  /** Zoom level that shows every discovered world, centred on the star. */
+  /** Zoom 1, centred on the galaxy core. */
   G.fitView = function (run, glide) {
-    let ext = 60;
-    if (run) for (const b of run.bodies) if (b.found) ext = Math.max(ext, b.r + b.size + 10);
-    const mapH = G.mapBottom() - G.HUD_H - 8;
-    let z = 1;
-    for (const zz of C.camera.zooms) if (ext * 2 * zz <= G.W - 16 && ext * 2 * C.map.tilt * zz + 30 <= mapH) z = zz;
     G.stopCam();
-    G.cam.z = z;
-    G.cam.tc = { x: C.map.cx, y: C.map.cy + 6 };
+    G.cam.z = 1;
+    G.cam.tc = { x: 0, y: 4 };
     if (!glide) G.snapCam();
   };
   /** Glide to a world point, optionally changing zoom. */
   G.focusOn = function (x, y, z) {
     G.cam.anchor = null; G.cam.vx = 0; G.cam.vy = 0;
-    if (z) G.cam.z = U.clamp(Math.round(z), 1, 4);
+    if (z) G.cam.z = U.clamp(Math.round(z), 1, 3);
     G.cam.tc = { x, y };
   };
   /** Jump straight to the target view with no animation. */

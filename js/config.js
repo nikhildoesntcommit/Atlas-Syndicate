@@ -1,104 +1,63 @@
-/* ATLAS SYNDICATE v4 — config.js
-   Every tunable number, the palette and all game data tables.
+/* ATLAS SYNDICATE v5 — config.js
+   Every tunable number, the palette and all game data tables (corporations, cards, events, factions).
    Classic script: everything hangs off the single global namespace AS. */
 (function (AS) {
   'use strict';
 
-  AS.VERSION = '4.0.0';
+  AS.VERSION = '5.0.0';
 
   AS.CONFIG = {
     view: { minW: 480, minH: 270, scales: { large: [480, 270], medium: [640, 360], small: [800, 450] } },
-    sim: { step: 1 / 20, maxFrameDt: 0.05, maxStepsPerFrame: 600, maxUrlSpeed: 20, hudSpeeds: [1, 2, 3] },
+    sim: { step: 0.1, maxFrameDt: 0.05, maxStepsPerFrame: 40, maxUrlSpeed: 20, hudSpeeds: [1, 2, 3] },
+    camera: { zooms: [1, 2, 3], margin: 60, tipDelay: 0.3, glide: 6 },
 
-    map: {
-      cx: 240, cy: 110,           // star position in world space
-      tilt: 0.38,                 // orbital plane squash (oblique 3/4 view)
-      refRadius: 82, primePeriod: 600,
-      innerR: 30, outerR: 212,
-      beltGap: 0.5,               // decorative asteroid belt sits between two orbits
+    game: {
+      length: 1800,          // 30:00 timer; most systems wins when it runs out
+      protect: 240,          // 0:00-4:00: nobody may attack anybody
+      cycle: 10,             // credits, salaries and repairs settle every cycle (seconds)
+      cardEvery: 180,        // a card draft every 3 minutes
+      leaderShare: 0.35,     // leader pressure kicks in at this share of the galaxy
+      histEvery: 10,
     },
-    camera: { zooms: [1, 2, 3, 4], panSpeed: 170, margin: 120, tipDelay: 0.3, glide: 6 },
 
-    economy: {
-      startCredits: 1500,
-      claimBase: 400, claimPerColony: 190,
-      routeBase: 50, routePerDist: 0.6, routeRefund: 0.5, demolishRefund: 0.4,
-      freighterCost: 280, freighterCostStep: 35,
-      debtInterest: 0.004,
-      claimYield: 20,             // units of the main resource a new claim starts with
+    galaxy: { arms: 5, perArm: 4, core: 4, armR0: 72, armDR: 42, twist: 0.5, squash: 0.58, coreR: 30 },
+
+    econ: {
+      startCredits: 450,
+      extractorCost: 100, lineCost: 50, freighterCost: 60, stationCost: 200,
+      perRich: 2,            // an extractor makes richness x 2 units per cycle
+      pairValue: 8,          // credits per ORE+ENERGY pair the factory processes
+      surplusValue: 1,       // unpaired units sell for this
+      popBase: 3, popPerFood: 3, popMax: 30, popMult: 0.05,   // output x (1 + pop x 0.05)
+      baseLines: 2, linesAtPop: [12, 22], maxLines: 6,
+      startFreighters: 2, maxFreighters: 8,
     },
-    build: { time: 6, slow: { fab: 10, habitat: 8, depot: 5 } },
-    fleet: {
-      start: 3, capacity: 20, speed: 11,
-      dockTime: 1.0, unloadTime: 0.7, recheck: 1.0,
-      minLoadFrac: 0.3, patience: 6,
-      upkeep: 0.3, costPerDist: 0.06,
+    dur: {
+      decay: 1.2,            // buildings lose this much durability per cycle
+      equipDecay: 0.5,       // warships and platforms per cycle
+      repairFrac: 0.45,      // full repair costs 45% of the purchase price
+      autoRepairAt: 50,      // auto-repair fixes anything below this at the next cycle
+      battleDmg: 3, raidDmg: 9,
     },
-    colony: {
-      foodPer: 0.035, growth: 0.08, decline: 0.05, taxPer: 0.1,
-      outpostPop: 6, outpostCap: 8, primeCap: 20, outpostFood: 30,
-      storage: 60, primeStorage: 150, depotStorage: 80, reclaimDelay: 60,
-      primeStart: { pop: 24, stock: { food: 140, ice: 20, ore: 10 } },
+    army: {
+      salary: 0.8, salaryScale: 100,   // salary per soldier per cycle x (1 + army / 100)
+      trainTime: 2.0, batch: 5, maxQueue: 25,
+      speed: 7,              // galaxy units per second along a lane
+      startSoldiers: 12, startVet: 0.2, startPlatforms: 2,
+      vetPerCycle: 0.004, vetPerBattle: 0.15, vetBonus: 0.5,
+      desertFrac: 0.1,
     },
-    logistics: { bufferSeconds: 45 },
-    market: { sellRate: 3, sellRatePerQ: 0.45, saturation: 140, saturationPerQ: 0.14, satDecay: 45 },
-    contracts: {
-      first: 75, intervalStart: 85, intervalMin: 40, intervalDecPerMin: 1.6,
-      maxActive: 3, deadline: 160, offerTime: 40,
-      outputSeconds: 75, outputGrowthPerMin: 0.03, minQty: 10, minRate: 0.05,
-      rewardMult: 1.9, rewardBase: 120, confWin: 6, confFail: 8, fulfilRate: 12,
-    },
-    board: {
-      start: 100, quarterSeconds: 180, firstTarget: 650, targetGrowth: 1.24, targetGrowthLate: 1.12, lateFrom: 6,
-      missScale: 35, missMax: 30, hitBonus: 6,
-      starveDrain: 0.08, debtDrain: 0.05, debtDrainPer1k: 0.06, debtDrainMax: 0.3, colonyLostPenalty: 20,
-    },
-    discovery: { startKnownR: 112 },
-    // a run is a campaign across three star systems; each jump gate warps you to the next, harder one
-    campaign: {
-      systems: [
-        { name: 'SYSTEM 1', unlock: 330, minWorlds: 3, target: 1.0, waves: [80, 170, 260, 350] },
-        { name: 'SYSTEM 2', unlock: 210, minWorlds: 3, target: 1.15, waves: [50, 120, 190, 260, 330] },
-        { name: 'SYSTEM 3', unlock: 210, minWorlds: 3, target: 1.3, waves: [50, 120, 190, 260, 330] },
-      ],
-      warpDelay: 6, warpConf: 25, capitalNames: ['ATLAS PRIME', 'ATLAS II', 'ATLAS III'],
-    },
-    abilities: { boost: { dur: 15, cooldown: 70, mult: 2 }, deflect: { base: 120, perQ: 30 } },
-    autoAssignEvery: 1,
-    events: {
-      startAt: 200, firstJitter: 30, intervalMax: 78, intervalMin: 30, intervalDecPerMin: 1.8, warn: 8,
-      sevPerQuarter: 0.08,
-      storm: { w: 1, dur: 25 },
-      flare: { w: 0.45, dur: 12, minQ: 3 },
-      cargo: { w: 0.9 },
-      swing: { w: 1, dur: 60, min: 0.45, max: 1.9 },
-      spike: { w: 0.7, dur: 45, mult: 2 },
-      breakdown: { w: 0.8, dur: 30 },
-      meteor: { w: 0.5, minQ: 2, dur: 40, stockLoss: 0.3 },
-      fuel: { w: 0.55, dur: 45, mult: 2.5 },
-      boom: { w: 0.7, dur: 60, mult: 1.8 },
-      immigrants: { w: 0.6, n: 6 },
-      blight: { w: 0.5, dur: 35 },
-    },
-    mega: {
-      name: 'JUMP GATE', storage: 400, payFrac: 0.9,
-      stageConf: 12, stageGrant: 1200, freeFreighters: 3,
-      bonus: 20000, timeBonusPerSec: 15, timeBonusBy: 2400,
-      stages: [{ name: 'FRAME' }, { name: 'RING' }, { name: 'IGNITION' }],
-      // each system's gate asks for what you can make by then: basics, then gas, then parts
-      reqBySystem: [
-        [{ ore: 40 }, { ice: 40, alloy: 8 }, { food: 40 }],
-        [{ ore: 60 }, { gas: 25, alloy: 10 }, { food: 45, ice: 30 }],
-        [{ ore: 70, alloy: 10 }, { gas: 25, parts: 5 }, { food: 45, parts: 5 }],
-      ],
-    },
-    score: { perSecond: 3, perContract: 250, perPeakPop: 10, perStage: 2000, perSystem: 8000 },
+    equip: { shipCost: 120, shipPower: 5, platformCost: 150, platformPower: 10, maxPlatforms: 6 },
+    combat: { round: 0.8, k: 0.15, defBonus: 1.2, capitalBonus: 1.6, raidRounds: 3, raidLoot: 25, retreatLoss: 0.1, maxRounds: 30 },
+    buy: { base: 480, growth: 1.25, perGarrison: 8 },   // price = 480 x 1.25^systems owned + 8 per defender
+    neutral: { core: [34, 56], arm: [[18, 26], [11, 17], [6, 11], [4, 8]], vet: 0.3 },
+    events: { first: 270, every: 240, jitter: 30, warn: 60 },
     history: { every: 10 },
-    selftest: { minutes: 45, seed: 20261117 },
+    selftest: { seed: 20261121 },
     save: { every: 10 },
   };
 
-  /* ---------- 32-colour industrial palette (unchanged from v3) ---------- */
+  /* ---------- 32-colour industrial palette (unchanged since v3) ---------- */
   AS.PALETTE = [
     '#0d0e10', '#17191c', '#23262a', '#33373c', '#4a4f55', '#676c71', '#8d9195', '#c9c6bb', //  0- 7 soot → steel → dirty cream
     '#2a1d16', '#4a2f20', '#74452a', '#a3612f', '#c98a3e', '#e0b85a', '#f0dfa0', '#3b1a17', //  8-15 umber, rust, ochre, hazard, lamp, oxblood
@@ -108,150 +67,126 @@
   AS.PAL_KEYS = '0123456789abcdefghijklmnopqrstuv';
   AS.PAL_RGB = AS.PALETTE.map(h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
 
-  /* ---------- goods ---------- */
-  AS.GOOD_KEYS = ['ore', 'ice', 'gas', 'alloy', 'food', 'parts'];
-  AS.GOODS = {
-    ore:   { name: 'ORE',   col: 11, price: 3,  help: 'RAW ORE. SMELTERS TURN 2 ORE INTO 1 ALLOY.' },
-    ice:   { name: 'ICE',   col: 26, price: 2,  help: 'RAW ICE. AGRI DOMES TURN IT INTO FOOD.' },
-    gas:   { name: 'GAS',   col: 30, price: 4,  help: 'RAW GAS. FABRICATORS NEED IT FOR PARTS.' },
-    alloy: { name: 'ALLOY', col: 6,  price: 14, help: 'REFINED METAL. SELLS WELL AND FEEDS FABRICATORS.' },
-    food:  { name: 'FOOD',  col: 22, price: 5,  help: 'COLONISTS EAT IT. NO FOOD MEANS A SHRINKING COLONY.' },
-    parts: { name: 'PARTS', col: 13, price: 40, help: 'MACHINE PARTS. THE MOST VALUABLE GOOD.' },
+  /* ---------- resources ---------- */
+  AS.RES_KEYS = ['ore', 'energy', 'food'];
+  AS.RES = {
+    ore:    { name: 'ORE',    col: 11, kinds: ['rust', 'cinder', 'dwarf'], help: 'ORE + ENERGY AT THE FACTORY MAKE CREDITS.' },
+    energy: { name: 'ENERGY', col: 26, kinds: ['gas', 'ice'],             help: 'ENERGY + ORE AT THE FACTORY MAKE CREDITS.' },
+    food:   { name: 'FOOD',   col: 22, kinds: ['terran', 'ice2'],         help: 'FOOD GROWS POPULATION. POPULATION MULTIPLIES OUTPUT.' },
   };
 
-  /* ---------- facilities ---------- */
-  AS.FAC = {
-    mine:    { name: 'ORE MINE',    short: 'MINE',  cost: 260, upkeep: 0.40, deposit: 'ore', extract: { good: 'ore', rate: 0.55 } },
-    drill:   { name: 'ICE DRILL',   short: 'DRILL', cost: 260, upkeep: 0.40, deposit: 'ice', extract: { good: 'ice', rate: 0.55 } },
-    skimmer: { name: 'GAS SKIMMER', short: 'SKIM',  cost: 320, upkeep: 0.45, deposit: 'gas', extract: { good: 'gas', rate: 0.6 } },
-    agri:    { name: 'AGRI DOME',   short: 'AGRI',  cost: 300, upkeep: 0.35, time: 2.0, recipe: { in: { ice: 1 }, out: { food: 2 } } },
-    smelter: { name: 'SMELTER',     short: 'SMELT', cost: 380, upkeep: 0.50, time: 2.2, recipe: { in: { ore: 2 }, out: { alloy: 1 } }, industry: true },
-    fab:     { name: 'FABRICATOR',  short: 'FAB',   cost: 600, upkeep: 0.70, time: 3.0, recipe: { in: { alloy: 1, gas: 1 }, out: { parts: 1 } }, industry: true },
-    habitat: { name: 'HABITAT',     short: 'HAB',   cost: 300, upkeep: 0.25, housing: 12 },
-    depot:   { name: 'DEPOT',       short: 'DEPOT', cost: 220, upkeep: 0.20, storage: 80 },
-  };
-  AS.FAC_KEYS = Object.keys(AS.FAC);
-  AS.FAC_DESC = {
-    mine: 'DIGS ORE', drill: 'DRILLS ICE', skimmer: 'SKIMS GAS', agri: 'ICE > FOOD',
-    smelter: '2 ORE > ALLOY', fab: 'ALLOY+GAS > PARTS', habitat: '+12 COLONISTS', depot: '+80 STORAGE',
-  };
-  AS.FAC_HELP = {
-    mine: 'ORE MINE: DIGS ORE. RICHER DEPOSITS DIG FASTER.',
-    drill: 'ICE DRILL: DRILLS ICE. AN AGRI DOME TURNS ICE INTO FOOD.',
-    skimmer: 'GAS SKIMMER: COLLECTS GAS. NEEDED FOR PARTS.',
-    agri: 'AGRI DOME: 1 ICE > 2 FOOD. ONE DOME FEEDS ABOUT 28 COLONISTS.',
-    smelter: 'SMELTER: 2 ORE > 1 ALLOY. ORE CAN BE SHIPPED IN FROM OTHER WORLDS.',
-    fab: 'FABRICATOR: ALLOY + GAS > PARTS, THE MOST VALUABLE GOOD.',
-    habitat: 'HABITAT: ROOM FOR 12 MORE COLONISTS. COLONISTS PAY TAX AND EAT FOOD.',
-    depot: 'DEPOT: +80 STORAGE FOR EVERY GOOD ON THIS WORLD.',
-  };
-  AS.STATUS_HELP = {
-    ok: 'WORKING.', starved: 'IDLE - NEEDS INPUT GOODS DELIVERED HERE.', full: 'STORAGE FULL - SHIP THE OUTPUT AWAY WITH A ROUTE.',
-    broken: 'STOPPED BY AN EVENT - RESTARTS BY ITSELF.', build: 'UNDER CONSTRUCTION.',
+  /* ---------- factions: slot 0 is the player ---------- */
+  AS.FACTIONS = [
+    { name: 'ATLAS SYNDICATE', short: 'ATLAS', pers: 'player',      col: 13, dark: 11, deep: 9,  icon: 'atlas' },
+    { name: 'HALBERD',         short: 'HALBERD', pers: 'warlord',   col: 17, dark: 16, deep: 15, icon: 'warlord' },
+    { name: 'GILT',            short: 'GILT',  pers: 'merchant',    col: 31, dark: 6,  deep: 3,  icon: 'merchant' },
+    { name: 'BASTION',         short: 'BASTION', pers: 'turtle',    col: 22, dark: 21, deep: 20, icon: 'turtle' },
+    { name: 'JACKAL',          short: 'JACKAL', pers: 'opportunist', col: 26, dark: 25, deep: 24, icon: 'opportunist' },
+    { name: 'CINDER',          short: 'CINDER', pers: 'raider',     col: 18, dark: 10, deep: 9,  icon: 'raider' },
+  ];
+  AS.NEUTRAL = { name: 'INDEPENDENT', col: 6, dark: 4, deep: 3, icon: 'neutral' };
+  AS.PERS_NAMES = { player: 'PLAYER', warlord: 'WARLORD', merchant: 'MERCHANT', turtle: 'TURTLE', opportunist: 'OPPORTUNIST', raider: 'RAIDER', balanced: 'BALANCED' };
+  AS.PERS_DESC = {
+    warlord: 'AGGRESSIVE. ATTACKS ITS STRONGEST NEIGHBOUR. SPENDS HEAVILY ON SOLDIERS.',
+    merchant: 'BIG ECONOMY, BUYS SYSTEMS. FIGHTS WHEN ATTACKED OR WHEN ODDS ARE OVERWHELMING. HITS HARD LATE.',
+    turtle: 'FORTIFIES CHOKEPOINTS. RARELY EXPANDS. PUNISHES OVEREXTENDED ATTACKERS.',
+    opportunist: 'ATTACKS WHOEVER JUST LOST A BATTLE OR LEFT A SYSTEM LIGHTLY DEFENDED.',
+    raider: 'FAST STRIKES ON BORDER SYSTEMS. WRECKS BUILDINGS, THEN RETREATS.',
   };
 
-  /* ---------- world types & traits ---------- */
-  AS.TYPE_DEFS = {
-    rust:   { size: [4, 6],  slots: [4, 5], dep: R => ({ ore: R(1.2, 1.6) }),                              blurb: 'ROCKY WORLD - ORE' },
-    cinder: { size: [3, 5],  slots: [3, 4], dep: R => ({ ore: R(0.8, 1.2), gas: R(0.3, 0.6) }),          blurb: 'VOLCANIC WORLD - ORE, GAS' },
-    ice:    { size: [5, 7],  slots: [4, 5], dep: R => ({ ice: R(1.2, 1.6) }),                              blurb: 'ICE WORLD - ICE' },
-    ice2:   { size: [3, 5],  slots: [3, 4], dep: R => ({ ice: R(0.9, 1.3), ore: R(0.2, 0.5) }),           blurb: 'ICY MOON - ICE, ORE' },
-    gas:    { size: [8, 11], slots: [3, 3], dep: R => ({ gas: R(1.3, 1.8) }),                              blurb: 'GAS GIANT - GAS' },
-    belt:   { size: [5, 5],  slots: [4, 4], dep: R => ({ ore: R(1.0, 1.4), ice: R(0.3, 0.6) }),           blurb: 'ASTEROID STATION - ORE, ICE' },
-    dwarf:  { size: [3, 4],  slots: [3, 4], dep: R => ({ ore: R(0.5, 0.9), ice: R(0.5, 0.9), gas: R(0, 0.35) }), blurb: 'DWARF WORLD - MIXED' },
-  };
-  AS.NAME_POOLS = {
-    rust: ['FERRUM', 'ANVIL', 'MARROW', 'HEMATITE', 'IRONSIDE', 'GRIST', 'RUSTWATER', 'SLAG'],
-    cinder: ['CINDER', 'BRIMSTONE', 'ASHFALL', 'KILN', 'CLINKER', 'SCORIA'],
-    ice: ['GLACIES', 'HOARFROST', 'RIME', 'WHITEOUT', 'COLDHARBOUR', 'SLEET'],
-    ice2: ['TETHYS', 'PALLOR', 'FROSTMOOR', 'VESPER', 'CALLOW', 'FLOE'],
-    gas: ['JOVAN', 'TALLOW', 'MERIDIAN', 'BELLOWS', 'OSSIA', 'HALCYON'],
-    belt: ['KESSLER BELT', 'GALLOWAY BELT', 'DREDGE BELT', 'TIPHEAP BELT'],
-    dwarf: ['NYX', 'SABLE', 'VANTA', 'ORRIN', 'HOLLOW', 'PELL', 'THRACE', 'CAIRN'],
-  };
-  AS.SYSTEM_NAMES = ['ATLAS', 'VARGA', 'ORPHEON', 'KESTREL', 'HALBERD', 'MORROW', 'GANTRY', 'CRUCIBLE', 'TANNER', 'BULWARK', 'COKER', 'FOUNDRY'];
+  AS.SYSTEM_NAMES = ['KESSA', 'VARGA', 'ORPHEON', 'KESTREL', 'MORROW', 'GANTRY', 'CRUCIBLE', 'TANNER', 'COKER', 'FOUNDRY', 'ANVIL', 'MARROW',
+    'HEMATITE', 'GRIST', 'SLAG', 'KILN', 'RIME', 'SLEET', 'TALLOW', 'MERIDIAN', 'BELLOWS', 'OSSIA', 'NYX', 'SABLE', 'VANTA', 'ORRIN', 'PELL',
+    'THRACE', 'CAIRN', 'DREDGE', 'GALLOWAY', 'HALCYON', 'SCORIA', 'ASHFALL', 'FERRUM', 'CLINKER', 'TETHYS', 'VESPER', 'FLOE', 'JOVAN'];
 
-  AS.TRAITS = {
-    rich:      { name: 'RICH SEAM',      short: 'RICH', icon: '+', desc: '+50% EXTRACTION HERE.', p: 0.22 },
-    unstable:  { name: 'UNSTABLE ORBIT', short: 'UNST', icon: '!', desc: 'BREAKDOWNS 3X MORE LIKELY HERE. CLAIM COSTS 30% LESS.', p: 0.14 },
-    radiation: { name: 'RADIATION',      short: 'RAD',  icon: '*', desc: 'HABITATS HOLD 40% FEWER COLONISTS. EXTRACTION +25%.', p: 0.14 },
-    lowgrav:   { name: 'LOW GRAVITY',    short: 'LOWG', icon: '^', desc: 'TRIPS TO OR FROM HERE COST 60% LESS.', p: 0.15 },
-    wide:      { name: 'WIDE PLAIN',     short: 'WIDE', icon: '#', desc: '+1 BUILD SLOT.', p: 0.15 },
-    fertile:   { name: 'FERTILE',        short: 'FERT', icon: '&', desc: 'AGRI DOMES HERE MAKE 50% MORE FOOD.', p: 0.16 },
-    geo:       { name: 'GEOTHERMAL',     short: 'GEO',  icon: '=', desc: 'FACILITY UPKEEP HERE IS HALVED.', p: 0.12 },
+  /* ---------- corporations: one strong, simple ability each ---------- */
+  AS.CORPS = {
+    halden:  { name: 'HALDEN ARMS',     desc: 'SOLDIER SALARIES -30%.' },
+    swift:   { name: 'SWIFT HAULAGE',   desc: 'FREIGHTERS 50% FASTER: EACH ONE SERVES 1.5 STOPS.' },
+    krone:   { name: 'KRONE SUPPLY',    desc: 'ALL PURCHASES COST 20% LESS.' },
+    duramax: { name: 'DURAMAX',         desc: 'BUILDINGS AND EQUIPMENT LOSE DURABILITY 50% SLOWER.' },
+    salvage: { name: 'SALVAGE CO',      desc: 'CAPTURED SYSTEMS KEEP ALL BUILDINGS, AT 50% DURABILITY.' },
+    fortis:  { name: 'FORTIS DEFENCE',  desc: 'YOUR SYSTEMS DEFEND WITH +20% STRENGTH.' },
+    rapid:   { name: 'RAPID TRANSIT',   desc: 'ARMIES MOVE 40% FASTER ALONG LANES.' },
+    drill:   { name: 'DRILL MASTERS',   desc: 'SOLDIERS TRAIN TWICE AS FAST AND START AS VETERANS.' },
   };
-  AS.TRAIT_KEYS = Object.keys(AS.TRAITS);
+  AS.CORP_KEYS = Object.keys(AS.CORPS);
 
-  /* ---------- Board perks (chosen at each quarterly review) ---------- */
-  AS.PERKS = {
-    bulk:      { name: 'Bulk Holds',           desc: '+40% freighter cargo.' },
-    drives:    { name: 'Fast Drives',          desc: '+25% freighter speed.' },
-    express:   { name: 'Express Lanes',        desc: '-40% running cost per trip.' },
-    hydro:     { name: 'Hydroponics',          desc: '+50% Agri Dome output.' },
-    deep:      { name: 'Deep Drilling',        desc: '+30% output at every mine, drill and skimmer.' },
-    trade:     { name: 'Trade License',        desc: '+20% sale prices at Atlas Prime.' },
-    rings:     { name: 'Habitat Rings',        desc: '+50% room in every Habitat.' },
-    favour:    { name: 'Board Favour',         desc: '+15 Board confidence now.' },
-    grant:     { name: 'Grant',                desc: '+1200 credits now, +300 per quarter played.' },
-    fleet:     { name: 'Fleet Expansion',      desc: '+2 freighters, free.' },
-    bonded:    { name: 'Bonded Warehouses',    desc: '+50% storage on every world.' },
-    automat:   { name: 'Automated Lines',      desc: 'Smelters and Fabricators work 40% faster.' },
-    taxes:     { name: 'Tax Reform',           desc: '+25% tax from colonists.' },
-    hulls:     { name: 'Reinforced Hulls',     desc: 'Freighters never lose cargo to events.' },
-    integrate: { name: 'Vertical Integration', desc: 'Fabricators on a world with a Smelter work 50% faster.' },
-    cluster:   { name: 'Industrial Cluster',   desc: '+12% extraction per other extractor of the same type on that world.' },
-    hub:       { name: 'Hub Network',          desc: '+4% freighter cargo per route Atlas Prime has had (most ever, max +60%).' },
-    insure:    { name: 'Insurance',            desc: 'Every harmful event pays you 150 credits per quarter played.' },
-    momentum:  { name: 'Momentum',             desc: '+6% sale prices for each target met in a row.' },
-    overtime:  { name: 'Overtime',             desc: 'Last 45 s of a quarter, target not met yet: all output +50%.' },
-    leanup:    { name: 'Lean Upkeep',          desc: '-25% facility upkeep.' },
-    gatefund:  { name: 'Gate Fund',            desc: 'Megaproject deliveries pay double.' },
-    survey:    { name: 'Deep Survey',          desc: 'Find the next unknown world now. Claims cost 20% less.' },
+  /* ---------- upgrade cards (Turmoil-style draft): exact effects in plain numbers ---------- */
+  AS.CARDS = {
+    // economy
+    deepcore:  { cat: 'econ', name: 'DEEP CORE DRILLS',  desc: 'EXTRACTORS MAKE 15% MORE.' },
+    foundry:   { cat: 'econ', name: 'AUTOMATED FOUNDRY', desc: 'FACTORY CREDITS +12%.' },
+    hydro:     { cat: 'econ', name: 'HYDROPONICS',       desc: 'EACH FOOD SUPPORTS 30% MORE POPULATION.' },
+    trade:     { cat: 'econ', name: 'TRADE CHARTER',     desc: 'SURPLUS UNITS SELL FOR 2 CR INSTEAD OF 1.' },
+    bulk:      { cat: 'econ', name: 'BULK CONTRACTS',    desc: 'SYSTEMS WITH 4+ EXTRACTORS EARN +10% CREDITS.' },
+    taxes:     { cat: 'econ', name: 'TAX OFFICE',        desc: '+1 CR PER CYCLE FOR EVERY 4 POPULATION.' },
+    leanfix:   { cat: 'econ', name: 'LEAN REPAIRS',      desc: 'REPAIRS COST 40% LESS.' },
+    bonds:     { cat: 'econ', name: 'WAR BONDS',         desc: '+600 CREDITS NOW.', stack: true },
+    // military
+    sergeants: { cat: 'mil', name: 'DRILL SERGEANTS',   desc: 'SOLDIERS TRAIN TWICE AS FAST.' },
+    cadre:     { cat: 'mil', name: 'VETERAN CADRE',     desc: 'VETERANS GAIN DOUBLE STRENGTH: UP TO +100% INSTEAD OF +50%.' },
+    wages:     { cat: 'mil', name: 'LOW WAGES',         desc: 'SOLDIER SALARIES -20%.' },
+    shock:     { cat: 'mil', name: 'SHOCK TROOPS',      desc: 'YOUR ATTACKING ARMIES +15% STRENGTH.' },
+    warfound:  { cat: 'mil', name: 'WAR FOUNDRIES',     desc: 'WARSHIPS COST 30% LESS.' },
+    guns:      { cat: 'mil', name: 'HEAVY GUNS',        desc: 'WARSHIPS +50% STRENGTH.' },
+    medics:    { cat: 'mil', name: 'FIELD MEDICS',      desc: '25% OF SOLDIERS LOST IN A BATTLE YOU WIN RETURN.' },
+    hardened:  { cat: 'mil', name: 'BATTLE HARDENED',   desc: 'SOLDIERS GAIN DOUBLE VETERANCY FROM BATTLES.' },
+    mercs:     { cat: 'mil', name: 'MERCENARY COMPANY', desc: '+15 SOLDIERS AT YOUR CAPITAL NOW.', stack: true },
+    // logistics
+    extraline: { cat: 'log', name: 'EXTRA LINE',        desc: '+1 SUPPLY LINE IN EVERY SYSTEM.' },
+    fastfr:    { cat: 'log', name: 'FAST FREIGHTERS',   desc: 'EACH FREIGHTER SERVES +0.5 STOPS.' },
+    drives:    { cat: 'log', name: 'HYPERLANE DRIVES',  desc: 'ARMIES MOVE 30% FASTER.' },
+    hulls:     { cat: 'log', name: 'CHEAP HULLS',       desc: 'LINES AND FREIGHTERS COST 40% LESS.' },
+    tough:     { cat: 'log', name: 'HARDENED LINES',    desc: 'LINES AND FREIGHTERS LOSE DURABILITY 50% SLOWER.' },
+    interior:  { cat: 'log', name: 'INTERIOR LINES',    desc: 'ARMIES MOVING BETWEEN YOUR OWN SYSTEMS ARE 50% FASTER.' },
+    // defence
+    fortress:  { cat: 'def', name: 'FORTRESS DOCTRINE', desc: 'DEFENDER BONUS +15%: 1.35X INSTEAD OF 1.2X.' },
+    grid:      { cat: 'def', name: 'PLATFORM GRID',     desc: 'DEFENCE PLATFORMS +50% STRENGTH.' },
+    cheapplat: { cat: 'def', name: 'PREFAB PLATFORMS',  desc: 'DEFENCE PLATFORMS COST 40% LESS.' },
+    militia:   { cat: 'def', name: 'MILITIA',           desc: 'EVERY SYSTEM YOU OWN DEFENDS WITH +5 STRENGTH.' },
+    radar:     { cat: 'def', name: 'EARLY WARNING',     desc: 'SEE EXACT ARMIES TWO LANES AWAY, NOT ONE.' },
+    armour:    { cat: 'def', name: 'ARMOURED STATIONS', desc: 'BUILDINGS TAKE 50% LESS BATTLE AND RAID DAMAGE.' },
+    guard:     { cat: 'def', name: 'CAPITAL GUARD',     desc: 'YOUR CAPITAL DEFENDS WITH +40% STRENGTH.' },
   };
-  AS.PERK_KEYS = Object.keys(AS.PERKS);
+  AS.CARD_KEYS = Object.keys(AS.CARDS);
+  AS.CARD_CATS = { econ: ['ECONOMY', 13], mil: ['MILITARY', 17], log: ['LOGISTICS', 26], def: ['DEFENCE', 22] };
 
-  /* ---------- charters (run modifiers chosen before a run) ---------- */
-  AS.CHARTERS = {
-    standard:  { name: 'Standard Charter',  desc: 'No special terms. The baseline.',                                  score: 1.0 },
-    lean:      { name: 'Lean Operation',    desc: '+600 starting credits. All upkeep costs 30% more.',                score: 1.05 },
-    frontier:  { name: 'Frontier Rush',     desc: 'Claims cost 40% less. Board targets are 15% higher.',              score: 1.15 },
-    volatile:  { name: 'Volatile Markets',  desc: 'Price swings twice as common and harsher. Contracts pay 40% more.', score: 1.1 },
-    hazard:    { name: 'Hazard Lanes',      desc: 'Cargo losses and storms 3x as common. +2 starting freighters.',     score: 1.05 },
-    veins:     { name: 'Rich Veins',        desc: '+30% extraction. Colonists eat 25% more.',                         score: 1.0 },
-    austerity: { name: 'Austerity Board',   desc: 'Board starts at 75 confidence. Every review offers 4 perks.',       score: 1.2 },
-    taxed:     { name: 'Heavy Tax',         desc: '+30% tax. Starving colonies cost twice the confidence.',            score: 1.1 },
+  /* ---------- galaxy events (announced 60 s ahead) ---------- */
+  AS.EVENTS = {
+    storm:  { name: 'SOLAR STORM',        dur: 60,  w: 1.0 },
+    boom:   { name: 'MARKET BOOM',        dur: 90,  w: 1.0, value: 5 },
+    mercs:  { name: 'MERCENARY SURPLUS',  dur: 90,  w: 0.9, salary: 0.5, train: 3 },
+    lane:   { name: 'LANE COLLAPSE',      dur: 120, w: 0.9 },
+    pirate: { name: 'PIRATE SURGE',       dur: 0,   w: 0.8, mult: 1.5, add: 5 },
   };
-  AS.CHARTER_KEYS = Object.keys(AS.CHARTERS);
+  AS.EVENT_KEYS = Object.keys(AS.EVENTS);
 
-  /* ---------- events: plain mechanical banners ---------- */
-  AS.EVENT_NAMES = {
-    storm: 'SOLAR STORM', flare: 'SOLAR FLARE', cargo: 'CARGO LOSS', swing: 'PRICE SWING', spike: 'DEMAND SPIKE',
-    breakdown: 'BREAKDOWN', meteor: 'METEOR STRIKE', fuel: 'FUEL SHORTAGE', boom: 'RICH SEAM', immigrants: 'IMMIGRATION',
-    blight: 'CROP BLIGHT',
+  /* ---------- difficulty ---------- */
+  AS.DIFFICULTY = {
+    easy:   { name: 'EASY',   think: 9.0, odds: 0.2,   sources: 1, focus: 0.3, army: 0.7, aggr: 0.5, noise: 0.35, econ: 0.45, income: 1.0,  repairAt: 15, react: 0.5,
+      desc: 'RIVALS REACT SLOWLY, BUILD LESS AND ONLY TAKE SAFE FIGHTS.' },
+    normal: { name: 'NORMAL', think: 4.0, odds: 0.0,   sources: 2, focus: 1.0, army: 1.0, aggr: 1.0, noise: 0.15, econ: 1.0, income: 1.0,  repairAt: 30, react: 1.0,
+      desc: 'RIVALS PLAY THE SAME RULES AS YOU, AT A FAIR PACE.' },
+    hard:   { name: 'HARD',   think: 2.5, odds: -0.05, sources: 3, focus: 1.15, army: 1.0, aggr: 1.1, noise: 0.05, econ: 1.0, income: 1.15, repairAt: 40, react: 1.3,
+      desc: 'FAST, COORDINATED RIVALS. THEY EARN +15% CREDITS (STATED BONUS).' },
   };
-  AS.HARMFUL = { storm: 1, flare: 1, cargo: 1, breakdown: 1, meteor: 1, fuel: 1, blight: 1 };
+  AS.DIFF_KEYS = ['easy', 'normal', 'hard'];
 
   /* ---------- achievements (stored locally) ---------- */
   AS.ACHIEVEMENTS = [
-    { id: 'first',    name: 'FIRST SALE',        desc: 'Deliver goods to Atlas Prime.' },
-    { id: 'five',     name: 'FIVE WORLDS',       desc: 'Own 5 worlds at once.' },
-    { id: 'eight',    name: 'SPRAWL',            desc: 'Own 8 worlds at once.' },
-    { id: 'pop100',   name: 'CROWDED',           desc: 'Reach 100 colonists.' },
-    { id: 'parts',    name: 'PRECISION WORK',    desc: 'Sell 100 parts in one run.' },
-    { id: 'fleet20',  name: 'FLEET OF TWENTY',   desc: 'Own 20 freighters.' },
-    { id: 'streak5',  name: 'ON TARGET',         desc: 'Meet 5 quarterly targets in a row.' },
-    { id: 'contr10',  name: 'CONTRACTOR',        desc: 'Complete 10 contracts in one run.' },
-    { id: 'rich',     name: 'HIGH ROLLER',       desc: 'Earn 100,000 credits in one run.' },
-    { id: 'comeback', name: 'COMEBACK',          desc: 'Climb from below 20 confidence to above 60.' },
-    { id: 'megaup',   name: 'MEGAPROJECT',       desc: 'Unlock a jump gate.' },
-    { id: 'warp',     name: 'FIRST JUMP',        desc: 'Open a jump gate and warp to a new system.' },
-    { id: 'megadone', name: 'ALL GATES OPEN',    desc: 'Finish all three star systems.' },
-    { id: 'speed',    name: 'FAST TRACK',        desc: 'Finish all three systems before 35:00.' },
-    { id: 'hard',     name: 'HARD TERMS',        desc: 'Finish all three systems on a x1.15+ charter.' },
-    { id: 'shield',   name: 'SHIELDS UP',        desc: 'Deflect 3 meteors in one run.' },
-    { id: 'clean',    name: 'CLEAN SHEET',       desc: 'Reach 15:00 with no lost world and no failed contract.' },
-    { id: 'daily',    name: 'DAILY SHIFT',       desc: 'Finish a run of the Daily System.' },
+    { id: 'chain',    name: 'FIRST CHAIN',     desc: 'Complete an ORE + ENERGY chain.' },
+    { id: 'conquer',  name: 'FIRST CONQUEST',  desc: 'Capture a system by force.' },
+    { id: 'buyer',    name: 'PEACEFUL TERMS',  desc: 'Buy a neutral system.' },
+    { id: 'hold',     name: 'HELD THE LINE',   desc: 'Win a defensive battle against a rival.' },
+    { id: 'raid',     name: 'HIT AND RUN',     desc: 'Complete a raid.' },
+    { id: 'capital',  name: 'DECAPITATION',    desc: 'Capture a rival capital.' },
+    { id: 'eight',    name: 'EIGHT SYSTEMS',   desc: 'Hold 8 systems at once.' },
+    { id: 'twelve',   name: 'HALF THE GALAXY', desc: 'Hold 12 systems at once.' },
+    { id: 'army100',  name: 'STANDING ARMY',   desc: 'Field 100 soldiers.' },
+    { id: 'vet',      name: 'OLD GUARD',       desc: 'Have a garrison at full veterancy.' },
+    { id: 'win',      name: 'GALAXY TAKEN',    desc: 'Win a game.' },
+    { id: 'winhard',  name: 'HARD TERMS',      desc: 'Win on Hard.' },
+    { id: 'sweep',    name: 'CLEAN SWEEP',     desc: 'Eliminate every rival.' },
+    { id: 'nodesert', name: 'PAID IN FULL',    desc: 'Finish a game without a single desertion.' },
   ];
-
-  AS.RANKS = [[90000, 'CHAIRMAN'], [60000, 'MAGNATE'], [40000, 'EXECUTIVE'], [25000, 'DIRECTOR'], [14000, 'MANAGER'], [7000, 'SUPERVISOR'], [0, 'TRAINEE']];
 })(globalThis.AS = globalThis.AS || {});

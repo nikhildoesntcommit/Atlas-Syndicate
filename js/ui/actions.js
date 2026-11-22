@@ -1,6 +1,6 @@
-/* ATLAS SYNDICATE v4 — ui/actions.js
-   What happens when the player does something: sim action + feedback. Also settings,
-   achievements, autosave and the local leaderboard. */
+/* ATLAS SYNDICATE v5 — ui/actions.js
+   What happens when the player does something: the sim action (through S.act, like every rival)
+   plus feedback. Also settings, achievements and autosave. */
 (function (AS) {
   'use strict';
 
@@ -8,62 +8,74 @@
   const Act = AS.Act = {};
 
   /* ---------- settings ---------- */
-  const DEFAULTS = { uiScale: 'large', shake: true, tips: true, music: 0.6, sfx: 0.8, mute: false, tipsSet: false };
+  const DEFAULTS = { uiScale: 'medium', shake: true, tips: true, music: 0.6, sfx: 0.8, mute: false, tipsSet: false };
   Act.loadSettings = function () {
     const s = Object.assign({}, DEFAULTS, Store.get('settings', {}) || {});
-    // tips default on for first-time players, off for returning ones (unless chosen explicitly)
-    if (!s.tipsSet) s.tips = !Store.get('onboarded', false);
+    if (!s.tipsSet) s.tips = !Store.get('tutorialDone', false);
     G.settings = s;
-    G.name = String(Store.get('name', 'PLAYER') || 'PLAYER').slice(0, 12);
   };
   Act.saveSettings = function () { Store.set('settings', G.settings); if (AS.Sfx) AS.Sfx.applyVolumes(); };
 
   const REASONS = {
-    same: 'PICK A DIFFERENT WORLD', unclaimed: 'CLAIM BOTH WORLDS FIRST', exists: 'ROUTE ALREADY EXISTS',
-    credits: 'NOT ENOUGH CREDITS', nofreighter: 'NO IDLE FREIGHTERS', none: 'NO FREIGHTERS ON THIS ROUTE',
-    deposit: 'NO SUITABLE DEPOSIT HERE', slot: 'SLOT IN USE', claimed: 'ALREADY CLAIMED', invalid: 'NOT POSSIBLE', gone: 'GONE', cooldown: 'THIS WORLD IS RECOVERING - TRY AGAIN SOON',
+    notyours: 'NOT YOUR SYSTEM', invalid: 'NOT POSSIBLE', built: 'ALREADY BUILT', linked: 'ALREADY LINKED', long: 'A LINE HAS AT MOST 5 STOPS',
+    slots: 'NO FREE SUPPLY LINE - GROW POPULATION OR EXTEND A LINE', credits: 'NOT ENOUGH CREDITS', maxfr: 'FREIGHTER LIMIT REACHED', none: 'NO FREIGHTER TO REMOVE',
+    fine: 'NOTHING TO REPAIR', queue: 'TRAINING QUEUE FULL', maxplat: 'PLATFORM LIMIT REACHED', notneutral: 'ONLY INDEPENDENT SYSTEMS CAN BE BOUGHT',
+    battle: 'A BATTLE IS ON THERE', notadjacent: 'MUST BE NEXT TO ONE OF YOUR SYSTEMS', underattack: 'UNDER ATTACK: THE GARRISON MUST FIGHT',
+    protected: 'ATTACKS OPEN AT 4:00', nopath: 'NO LANE ROUTE THROUGH YOUR SYSTEMS', empty: 'NO SOLDIERS TO SEND', same: 'PICK ANOTHER SYSTEM', inactive: '',
   };
   Act.fail = function (res) {
-    G.showToast(res.reason === 'credits' && res.cost ? 'NOT ENOUGH CREDITS (' + res.cost + ' CR)' : res.reason === 'cooldown' ? 'WORLD RECOVERING: CLAIM AGAIN IN ' + res.left + 'S' : (REASONS[res.reason] || 'CANNOT DO THAT'));
+    const t = res.reason === 'credits' && res.cost ? 'NOT ENOUGH CREDITS (' + res.cost + ' CR)' : (REASONS[res.reason] !== undefined ? REASONS[res.reason] : 'CANNOT DO THAT');
+    if (t) G.showToast(t, 17);
     AS.Sfx.play('err');
   };
-  /** Generic: run a sim action on the player's run; returns the result. */
+  Act.can = () => G.run && G.mode === 'play' && !G.run.over && G.run.phase === 'play';
+  /** Run a sim action for the player; returns the result. */
   Act.do = function (name, args, sound) {
-    if (!G.run || G.mode !== 'play' || G.run.over) return { ok: false };
-    const res = S.act(G.run, name, args);
-    if (res.ok) { if (sound) AS.Sfx.play(sound); if (AS.Onboard) AS.Onboard.event(name, args); }
+    if (!Act.can()) return { ok: false };
+    const res = S.act(G.run, 0, name, args);
+    if (res.ok) { if (sound) AS.Sfx.play(sound); if (AS.Tutorial) AS.Tutorial.event(name, args, res); AS.FX.consume(G.run, true); }
     else Act.fail(res);
     return res;
   };
-  Act.claim = b => Act.do('claim', { id: b.id });
-  Act.build = function (b, slot, type) {
-    const r = Act.do('build', { id: b.id, slot, type });
-    if (r.ok) { G.popup = null; G.showToast(AS.FAC[type].name + ' UNDER CONSTRUCTION', 13); }
+  Act.doSys = (name, args, sound) => Act.do(name, args, sound);
+  Act.recruit = function (sysId) { const r = Act.do('recruit', { sys: sysId, n: C.army.batch }); if (r.ok) G.showToast('TRAINING ' + r.n + ' SOLDIERS', 13); };
+  Act.buy = function (sysId) { const r = Act.do('buy', { sys: sysId }); if (r.ok) { G.showToast('SYSTEM BOUGHT - ' + r.cost + ' CR', 13); G.sel = { sys: sysId }; } };
+  Act.openSystem = function (id) {
+    const s = G.run && G.run.systems[id];
+    if (!s || s.owner !== 0) return;
+    G.view = 'system'; G.sysId = id; G.sel = null; G.order = null; G.drag = null; G.viewT = 0;
+    AS.Sfx.play('click');
+    if (AS.Tutorial) AS.Tutorial.event('open', { sys: id });
   };
-  Act.demolish = function (b, slot) { const r = Act.do('demolish', { id: b.id, slot }); if (r.ok) { G.popup = null; G.showToast('DEMOLISHED +' + r.refund + ' CR', 13); } };
-  Act.removeRoute = function (r) {
-    const res = Act.do('unroute', { id: r.id }, 'remove');
-    if (res.ok) { G.showToast('ROUTE CLOSED +' + res.refund + ' CR', 13); if (G.sel && G.sel.id === r.id) G.sel = null; }
+  Act.backToGalaxy = function () {
+    if (G.view !== 'system') return;
+    const s = G.run.systems[G.sysId];
+    G.view = 'galaxy'; G.sel = s ? { sys: s.id } : null; G.drag = null; G.viewT = 0;
+    if (s) G.focusOn(s.x, s.y);
+    AS.Sfx.play('click');
+    if (AS.Tutorial) AS.Tutorial.event('galaxy', {});
   };
-  Act.buyFreighter = function () {
-    const res = Act.do('buy', {}, 'buy');
-    if (res.ok) G.showToast('FREIGHTER BOUGHT - CLICK A ROUTE AND PRESS +', 13);
-    return res;
+  /** Dragged an army from one system onto another: open the order panel with odds. */
+  Act.prepareOrder = function (from, to) {
+    const run = G.run, a = run.systems[from], b = run.systems[to];
+    if (!a || !b || a.owner !== 0 || from === to) return;
+    if (a.battle) { Act.fail({ reason: 'underattack' }); return; }
+    if (!S.path(run, from, to, 0)) { Act.fail({ reason: 'nopath' }); return; }
+    G.order = { from, to, frac: b.owner === 0 ? 1 : 0.75 };
+    G.sel = null;
+    AS.Sfx.play('click');
   };
-  Act.freighters = function (r, d) {
-    if (d > 0 && !S.idleFreighters(G.run).length) {
-      const res = Act.do('buy', {}, 'buy');
-      if (!res.ok) return;
-      G.showToast('BOUGHT A FREIGHTER FOR ' + res.cost + ' CR', 13);
-    }
-    Act.do(d > 0 ? 'assign' : 'recall', { id: r.id }, 'click');
+  Act.sendOrder = function (mode) {
+    const o = G.order;
+    if (!o) return;
+    const r = Act.do('move', { from: o.from, to: o.to, frac: o.frac, mode }, null);
+    if (r.ok) { G.order = null; G.showToast(mode === 'move' ? 'ARMY ON THE MOVE' : mode === 'raid' ? 'RAID LAUNCHED' : 'ATTACK LAUNCHED', mode === 'move' ? 13 : 18); AS.Sfx.play(mode === 'move' ? 'depart' : 'charge'); }
   };
-  Act.boost = function () {
-    const res = S.act(G.run, 'boost', {});
-    if (res.ok) { G.showToast('BOOST: FREIGHTERS AT DOUBLE SPEED', 13); }
-    else if (res.reason === 'cooldown') { G.showToast('BOOST RECHARGING: ' + res.left + 'S', 18); AS.Sfx.play('err'); }
+  Act.retreat = function (battleId) { const r = Act.do('retreat', { battle: battleId }, 'remove'); if (r.ok) G.showToast('RETREATING - 10% LOST ON THE WAY OUT', 18); };
+  Act.pickCard = function (key) {
+    const r = S.act(G.run, 0, 'card', { key });
+    if (r.ok) { AS.FX.consume(G.run, true); G.showToast(AS.CARDS[key].name + ' ACTIVE', 13); if (!G.run.factions[0].drafts.length) AS.Screens.close(); Act.autosave(); }
   };
-  Act.deflect = function (b) { const r = Act.do('deflect', { id: b.id }); return r; };
   Act.toggleTips = function () {
     G.settings.tips = !G.settings.tips; G.settings.tipsSet = true; Act.saveSettings();
     AS.Sfx.play('click');
@@ -72,35 +84,19 @@
   Act.togglePause = function () { if (G.mode !== 'play') return; G.paused = !G.paused; AS.Sfx.play('click'); };
   Act.setSpeed = function (s) { if (G.mode !== 'play') return; G.speed = s; G.paused = false; AS.Sfx.play('click'); };
   Act.toggleMute = function () { G.settings.mute = !G.settings.mute; Act.saveSettings(); if (!G.settings.mute) AS.Sfx.play('click'); };
-  Act.openPause = function () { if (G.mode === 'play' && G.run && !G.run.over && !G.screen) { G.drag = null; G.pan = null; G.popup = null; AS.Screens.open('pause'); Act.autosave(); } };
+  Act.openPause = function () { if (G.mode === 'play' && G.run && !G.run.over && !G.screen) { G.drag = null; G.pan = null; G.order = null; AS.Screens.open('pause'); Act.autosave(); } };
 
-  /* ---------- autosave (resume a closed tab) ---------- */
+  /* ---------- autosave ---------- */
   Act.autosave = function () {
     const run = G.run;
-    if (!run || G.mode !== 'play' || G.attract || run.over || run.tutorial) return;
-    try { Store.set('save', { v: 4, at: Date.now(), name: G.name, data: S.serialize(run), seen: G.seen }); } catch (e) { /* storage full: ignore */ }
+    if (!run || G.mode !== 'play' || run.over || run.phase !== 'play') return;
+    try { Store.set('save', { v: 5, at: Date.now(), data: S.serialize(run) }); } catch (e) { /* storage full: ignore */ }
   };
   Act.clearSave = () => Store.remove('save');
   Act.savedRun = function () {
     const s = Store.get('save', null);
-    if (!s || s.v !== 4 || !s.data) return null;
-    try { const run = S.deserialize(s.data); return run.over ? null : { run, at: s.at, seen: s.seen || {} }; } catch (e) { return null; }
-  };
-
-  /* ---------- leaderboard ---------- */
-  Act.board = function () {
-    const b = Store.get('board', []);
-    if (!Array.isArray(b)) return [];
-    return b.filter(e => e && Number.isFinite(e.score)).sort((a, c) => c.score - a.score).slice(0, 10);
-  };
-  Act.addToBoard = function (entry) {
-    const b = Act.board();
-    b.push(entry);
-    b.sort((a, c) => c.score - a.score);
-    const top = b.slice(0, 10);
-    Store.set('board', top);
-    const i = top.findIndex(e => e.id === entry.id);
-    return i >= 0 ? i + 1 : null;
+    if (!s || s.v !== 5 || !s.data) return null;
+    try { const run = S.deserialize(s.data); return run.over ? null : { run, at: s.at }; } catch (e) { return null; }
   };
 
   /* ---------- achievements ---------- */
@@ -114,31 +110,25 @@
     if (!a) return;
     G.notices.push({ title: 'ACHIEVEMENT', text: a.name, t: 5, max: 5 });
     AS.Sfx.play('achievement');
-    if (G.run) S.logMoment(G.run, 'ACHIEVEMENT: ' + a.name, 'ach');
   }
-  /** Checked twice a second during play and once at the end of a run. */
   Act.checkAchievements = function (run, final) {
-    if (!run || G.attract || run.tutorial) return;
-    const cols = S.colonies(run).length;
-    if (run.stats.delivered > 0 && S.prime(run).stock && Object.values(run.stats.sold).some(v => v > 0)) unlock('first');
-    if (cols >= 5) unlock('five');
-    if (cols >= 8) unlock('eight');
-    if (S.totalPop(run) >= 100) unlock('pop100');
-    if (run.stats.sold.parts >= 100) unlock('parts');
-    if (run.freighters.length >= 20) unlock('fleet20');
-    if (run.bestStreak >= 5) unlock('streak5');
-    if (run.contractsDone >= 10) unlock('contr10');
-    if (run.totalIncome >= 100000) unlock('rich');
-    if (run.comeback) unlock('comeback');
-    if (run.mega.state !== 'locked' || run.sysDone) unlock('megaup');
-    if (run.sysDone >= 1) unlock('warp');
-    if (run.deflected >= 3) unlock('shield');
-    if (run.won) {
-      unlock('megadone');
-      if (run.mega.completedAt < 35 * 60) unlock('speed');
-      if (AS.CHARTERS[run.charter].score >= 1.15) unlock('hard');
+    if (!run || G.attract || run.slot0 || run.presented) return;
+    const f = run.factions[0], st = f.stats, own = S.ownSystems(run, 0);
+    if (own.some(s => S.sysYield(run, s).pairs > 0)) unlock('chain');
+    if (st.captured > 0) unlock('conquer');
+    if (st.bought > 0) unlock('buyer');
+    if (run.battleLog.some(b => b.def === 0 && b.att > 0 && b.winner === 0)) unlock('hold');
+    if (st.raids > 0) unlock('raid');
+    if (st.eliminated > 0) unlock('capital');
+    if (own.length >= 8) unlock('eight');
+    if (own.length >= 12) unlock('twelve');
+    if (S.soldiers(run, 0) >= 100) unlock('army100');
+    if (own.some(s => s.gar.n >= 10 && s.gar.vet >= 0.99)) unlock('vet');
+    if (final && run.winner === 0) {
+      unlock('win');
+      if (run.diff === 'hard') unlock('winhard');
+      if (run.factions.filter(x => x.alive).length === 1) unlock('sweep');
+      if (st.deserted === 0) unlock('nodesert');
     }
-    if (run.t >= 15 * 60 && run.coloniesLost === 0 && run.contractsFailed === 0) unlock('clean');
-    if (final && run.daily) unlock('daily');
   };
 })(globalThis.AS = globalThis.AS || {});
