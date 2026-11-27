@@ -77,17 +77,37 @@
 
   /* ---------- title ---------- */
   function drawTitle(ctx) {
-    const cx = Math.round(Math.max(118, Math.min(G.W * 0.27, 190)));
+    const compact = G.W < 620;
+    const cx = Math.round(compact ? G.W / 2 : Math.max(142, Math.min(G.W * 0.28, 210)));
     const k = U.easeOut(U.clamp(G.screenT * 2, 0, 1));
-    const ly = Math.round(G.H * 0.12 - (1 - k) * 30);
+    const ly = Math.round(G.H * 0.10 - (1 - k) * 30);
     const sc = G.W >= 640 ? 4 : 3;
+    // A dedicated key art vignette: chunky, restrained pixels make the title
+    // feel like a place rather than another settings panel.
+    if (!compact) {
+      const px = Math.round(G.W * 0.73), py = Math.round(G.H * 0.42), r = Math.min(58, Math.round(G.H * 0.20));
+      for (let y = -r; y <= r; y += 2) for (let x = -r; x <= r; x += 2) {
+        const d = Math.hypot(x, y);
+        if (d > r) continue;
+        const light = (x / r + 1) * 0.5 - y / r * 0.12;
+        const col = d > r - 3 ? 24 : light > 0.75 ? 26 : light > 0.48 ? 25 : light > 0.25 ? 24 : 23;
+        D.rect(ctx, px + x, py + y, 2, 2, col);
+      }
+      D.rect(ctx, px - r - 12, py + r - 4, r * 2 + 24, 2, 13);
+      D.rect(ctx, px - r - 4, py + r - 1, r * 2 + 8, 1, 12);
+      // Three tiny outbound freighters make the local economy visible.
+      AS.Spr.drawFreighter(ctx, px - r - 30, py - r + 16, false, Math.floor(G.time * 2) % 2, 13, 2);
+      AS.Spr.drawFreighter(ctx, px + r - 6, py + 10, true, Math.floor(G.time * 2 + 1) % 2, 22, 3);
+      TS(ctx, 'THE FRONTIER IS WAITING', px, py + r + 12, 7, 'center');
+    }
     AS.Font.logo(ctx, 'ATLAS', cx, ly, sc);
     AS.Font.logo(ctx, 'SYNDICATE', cx, ly + 8 * sc + 4, Math.max(2, sc - 1), [7, 7, 6, 6, 5, 5, 4]);
     const ry = ly + 8 * sc + 4 + 8 * Math.max(2, sc - 1) + 6;
-    D.hazard(ctx, Math.round(cx - 90), ry, 180, 3, 13, G.time * 6);
-    TS(ctx, 'DRILL. FARM. SELL GOLD. BUILD A FLEET.', cx, ry + 7, 7, 'center');
+    const ruleW = compact ? 180 : 212;
+    D.hazard(ctx, Math.round(cx - ruleW / 2), ry, ruleW, 3, 13, G.time * 6);
+    TS(ctx, 'BUILD A WORLD. COMMAND A FLEET. TAKE THE GALAXY.', cx, ry + 7, 7, 'center');
     if (G.oldSaveMsg) T(ctx, 'YOUR SAVE FROM AN OLDER VERSION WAS REMOVED', cx, ry + 25, 17, { align: 'center' });
-    TS(ctx, 'TAKE THE GALAXY FROM FIVE AI RIVALS.', cx, ry + 15, 5, 'center');
+    TS(ctx, 'A 30-MINUTE OFFLINE STRATEGY SESSION.', cx, ry + 15, 5, 'center');
     const save = G.saveInfo;
     const items = [];
     if (save) items.push(['CONTINUE  ' + U.fmtTime(save.run.t), () => AS.Main.resume(save), { primary: true, tip: 'RESUME YOUR LAST GAME.' }]);
@@ -98,11 +118,11 @@
     items.push(['ACHIEVEMENTS  ' + got + '/' + AS.ACHIEVEMENTS.length, () => Sc.open('ach'), {}]);
     items.push(['SETTINGS', () => Sc.open('settings'), {}]);
     items.push(['HOW TO PLAY', () => Sc.open('help'), {}]);
-    const bw = 150, bh = 14, gap = 3;
-    let y = Math.max(ry + 26, Math.round(G.H - items.length * (bh + gap) - 18));
+    const bw = compact ? 168 : 174, bh = 15, gap = 4;
+    let y = Math.max(ry + 29, Math.round(G.H - items.length * (bh + gap) - 19));
     items.forEach(([label, fn, o], i) => {
       const kk = U.easeOut(U.clamp(G.screenT * 4 - i * 0.12, 0, 1));
-      G.button(ctx, Math.round(cx - bw / 2 + (1 - kk) * 60), y, bw, bh, label, () => { AS.Sfx.play('click'); fn(); }, o);
+      G.button(ctx, Math.round(cx - bw / 2 + (1 - kk) * 60), y, bw, bh, label, () => { AS.Sfx.play('click'); fn(); }, Object.assign({ big: true }, o));
       y += bh + gap;
     });
     TS(ctx, 'V' + AS.VERSION, G.W - 6, G.H - 9, 4, 'right');
