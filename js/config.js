@@ -39,7 +39,9 @@
       crew: 2,               // workers per building (they arrive with it)
       eat: 0.2,              // food each worker eats per cycle
       regrow: 2,             // workers per system who come back each cycle while everyone is fed
-      starve: 0.5,           // share of the unfed workers who die
+      hungerOutput: 0.75,    // staffed share after a missed meal; visible, recoverable pressure
+      starveAfter: 2,        // full missed cycles before workers begin to leave
+      starve: 0.25,          // share of unfed workers lost once the grace period is spent
     },
     /* machinery upgrades: every building goes up to level 3; each level adds 50% throughput */
     upgrade: { max: 3, boost: 0.5, price: [1.0, 2.0] },
@@ -79,7 +81,7 @@
       use: 'BUYS BUILDINGS, DRILLING, UPGRADES, MILITARY AND SYSTEMS. EARNED BY SELLING ON THE MARKET, PLUS 5 TAX PER SYSTEM EVERY CYCLE.' },
     gold:  { name: 'GOLD',  col: 13, price: 5,  use: 'MINED BY GOLD MINES. SELL IT ON THE MARKET FOR MONEY.' },
     water: { name: 'WATER', col: 26, price: 2,  use: 'MADE BY WATER PLANTS FROM ICE. GREENHOUSES AND LIVESTOCK FARMS DRINK IT.' },
-    food:  { name: 'FOOD',  col: 22, price: 3,  use: 'MADE BY FARMS FROM WATER. YOUR WORKERS EAT IT; WITHOUT IT THEY STARVE AND MACHINES STOP.' },
+    food:  { name: 'FOOD',  col: 22, price: 3,  use: 'MADE BY FARMS FROM WATER. YOUR WORKERS EAT IT; A SHORTAGE REDUCES OUTPUT BEFORE WORKERS LEAVE.' },
     fuel:  { name: 'FUEL',  col: 18, price: 4,  use: 'MADE BY REFINERIES FROM CRUDE. YOUR MILITARY BURNS IT; SHORT OF FUEL, IT FIGHTS AT THAT SHARE OF ITS POWER.' },
   };
   AS.MARKET_KEYS = ['gold', 'water', 'food', 'fuel'];

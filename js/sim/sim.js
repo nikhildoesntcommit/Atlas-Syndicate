@@ -168,10 +168,10 @@
     const f = run.factions[fid];
     if (f.alive) {
       const fc = S.forecast(run, f);
-      const what = { food: ': WORKERS WILL STARVE', fuel: ': YOUR MILITARY WEAKENS', water: ': FARMS STOP' };
+      const what = { food: ': CREW OUTPUT WILL FALL', fuel: ': YOUR MILITARY WEAKENS', water: ': FARMS STOP' };
       for (const w of fc.warn) out.push({ kind: 'short', res: w.res, sys: f.capital, owner: fid, t0: run.t,
         text: AS.STOCK[w.res].name + (w.cycles <= 0 ? ' RUNS OUT NEXT CYCLE' : ' RUNS OUT IN ' + w.cycles + ' CYCLES') + (what[w.res] || '') });
-      if (f.hungry > 0) out.push({ kind: 'broke', res: 'food', sys: f.capital, owner: fid, t0: run.t, text: 'NO FOOD: WORKERS ARE STARVING, MACHINES STOP' });
+      if (f.hungry > 0) out.push({ kind: 'broke', res: 'food', sys: f.capital, owner: fid, t0: run.t, text: f.hungry > C.econ.starveAfter ? 'SUSTAINED HUNGER: WORKERS ARE LEAVING' : 'CREWS UNDERFED: OUTPUT REDUCED - BUY OR GROW FOOD' });
       if (f.fuelEff < 0.999) out.push({ kind: 'broke', res: 'fuel', sys: f.capital, owner: fid, t0: run.t, text: 'LOW FUEL: MILITARY AT ' + Math.round(f.fuelEff * 100) + '% POWER' });
     }
     run.warnings = out;

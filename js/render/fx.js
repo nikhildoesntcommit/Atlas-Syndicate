@@ -75,6 +75,7 @@
         case 'coalitionStrike': if (live && e.target === 0) snd('alarm'); break;
         case 'coalitionEnd': snd('notice'); break;
         case 'starve': if (mine) { snd('alarm'); G.showToast(e.n + ' WORKERS STARVED: THEIR MACHINES STOP. BUILD FARMS OR BUY FOOD', 17); } break;
+        case 'hunger': if (mine) { snd('alarm'); G.showToast('CREWS UNDERFED: OUTPUT REDUCED. BUY OR GROW FOOD', 18); } break;
         case 'lowfuel': if (mine) { snd('alarm'); G.showToast('OUT OF FUEL: MILITARY AT ' + Math.round(e.eff * 100) + '% POWER. BUILD A REFINERY OR BUY FUEL', 17); } break;
         case 'nowater': if (mine) { snd('warning'); G.showToast('FARMS ARE SHORT OF WATER: BUILD A WATER PLANT OR BUY WATER', 18); } break;
         case 'demolish': if (mine) snd('remove'); break;

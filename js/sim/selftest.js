@@ -77,14 +77,16 @@
     fl = S.sysFlow(run, home);
     cycle(run);
     check('a greenhouse drinks water from the stock and grows food', gh.ok && f.lastCycle.got.food > 0 && Math.abs(f.lastCycle.got.food - fl.farmFood) < 1e-6);
-    // workers: no food, they die, machines stop; fed again, they return
+    // workers: missed food first reduces staffing, then sustained hunger causes attrition
     f.food = 0; f.water = 0;
     home.planets[0].blds = home.planets[0].blds.filter(b => b.kind !== 'greenhouse' && b.kind !== 'livestock');
     home.workers = S.crewNeed(home);
     const w0 = home.workers;
     cycle(run);
     fl = S.sysFlow(run, home);
-    check('without food workers die and some machines stop', home.workers < w0 && f.stats.starved > 0 && Object.values(fl.B).some(b => b.status === 'nocrew'));
+    check('the first missed meal reduces output before workers leave', home.workers === w0 && f.hungry === 1 && Object.values(fl.B).some(b => b.status === 'nocrew'));
+    cycle(run); cycle(run);
+    check('sustained hunger eventually causes worker attrition', home.workers < w0 && f.stats.starved > 0);
     f.food = 500;
     for (let i = 0; i < 6; i++) cycle(run);
     check('fed again, the workers come back', home.workers === S.crewNeed(home));

@@ -359,8 +359,8 @@
     }
     if (own) {
       const fl = S.sysFlow(run, s), need = S.crewNeed(s);
-      TS(ctx, 'WORKERS ' + s.workers + '/' + need + (s.workers < need ? (f.hungry ? ' - STARVING' : ' - RETURNING') : ''), x, y, s.workers < need ? 17 : 6);
-      P.tip(x, y - 1, w, 7, 'EVERY BUILDING NEEDS ' + C.econ.crew + ' WORKERS; THEY EAT ' + C.econ.eat + ' FOOD EACH PER CYCLE. UNFED WORKERS DIE AND THEIR MACHINES STOP; ONCE FOOD IS BACK, ' + C.econ.regrow + ' RETURN PER CYCLE.');
+      TS(ctx, 'WORKERS ' + s.workers + '/' + need + (f.hungry ? ' - UNDERFED' : s.workers < need ? ' - RETURNING' : ''), x, y, f.hungry || s.workers < need ? 17 : 6);
+      P.tip(x, y - 1, w, 7, 'EVERY BUILDING NEEDS ' + C.econ.crew + ' WORKERS; THEY EAT ' + C.econ.eat + ' FOOD EACH PER CYCLE. A MISSED MEAL REDUCES STAFFING FIRST. ONLY SUSTAINED HUNGER MAKES WORKERS LEAVE; ONCE FOOD IS BACK, ' + C.econ.regrow + ' RETURN PER CYCLE.');
       y += 8;
       const out = Object.assign({}, fl.out, { money: C.econ.levy });
       TS(ctx, 'MAKES', x, y + 1, 5); goodsRow(ctx, x + 24, y, out); y += 10;
@@ -391,7 +391,7 @@
       money: 'TAXES +' + C.econ.levy * sys + ' (' + C.econ.levy + ' PER SYSTEM) + SALES',
       gold: 'SELLS FOR $' + S.price(run, 'gold') + ' EACH ON THE MARKET',
       water: fc.farmWater > 0 ? 'FARMS DRINK ' + r1(fc.farmWater) + (fc.farmFrac < 0.999 ? ' - ONLY ' + Math.round(fc.farmFrac * 100) + '% MET' : '') : 'NO FARMS YET: BUILD A GREENHOUSE',
-      food: fc.workers + ' WORKERS EAT ' + r1(fc.food.out) + (f.hungry ? ' - STARVING!' : ''),
+      food: fc.workers + ' WORKERS EAT ' + r1(fc.food.out) + (f.hungry ? ' - OUTPUT REDUCED!' : ''),
       fuel: fc.fuelNeed > 0 ? 'MILITARY BURNS ' + r1(fc.fuelNeed) + ' - POWER ' + Math.round(f.fuelEff * 100) + '%' : 'NO MILITARY TO FUEL YET',
     };
     const bad = { water: fc.farmFrac < 0.999, food: f.hungry > 0 || fc.food.net < 0, fuel: f.fuelEff < 0.999 || fc.fuel.net < 0 };

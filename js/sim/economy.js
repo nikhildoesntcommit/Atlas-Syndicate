@@ -65,7 +65,9 @@
     sys.planets.forEach(p => { for (const b of p.blds) all.push(b); });
     const prio = b => { const R = AS.BLD[b.kind]; return R.role === 'farm' ? 0 : R.res === 'ice' ? 1 : 2; };
     const staffed = {};
-    let avail = sys.workers;
+    // A missed meal first creates a visible staffing shortfall. This gives the
+    // player time to react through a farm or the market before attrition begins.
+    let avail = Math.floor(sys.workers * (f && f.hungry > 0 ? E.hungerOutput : 1));
     for (const b of all.slice().sort((a, c) => prio(a) - prio(c) || a.id - c.id)) if (avail >= E.crew) { staffed[b.id] = true; avail -= E.crew; }
     for (const pw of sys.pathways) P[pw.id] = { ab: 0, ba: 0, ok: !storm, cap: pathCap, res: {} };
     sys.planets.forEach((p, pi) => {
@@ -247,16 +249,20 @@
       f.food += got.food;
       if (farmW > 0 && frac < 1 && f.farmFrac >= 1) run.fx.push({ type: 'nowater', owner: f.id });
       f.farmFrac = frac;
-      // workers eat; unfed workers die, fed ones come back
+      // Workers first lose output, then leave only after a sustained shortage.
       const workers = own.reduce((a, s) => a + s.workers, 0), eat = workers * E.eat;
       let fed = 1;
       if (f.food >= eat) f.food -= eat;
       else { fed = eat > 0 ? f.food / eat : 1; f.food = 0; }
       if (fed < 1) {
+        f.hungry++;
         let lost = 0;
-        for (const s of own) { const k = Math.min(s.workers, Math.ceil(s.workers * (1 - fed) * E.starve)); s.workers -= k; lost += k; }
-        f.hungry++; f.stats.starved += lost;
-        if (lost) { run.fx.push({ type: 'starve', owner: f.id, n: lost }); S.logMoment(run, f.short + ': ' + lost + ' WORKERS STARVED', f.id === 0 ? 'bad' : 'info', f.id); }
+        if (f.hungry > E.starveAfter) {
+          for (const s of own) { const k = Math.min(s.workers, Math.ceil(s.workers * (1 - fed) * E.starve)); s.workers -= k; lost += k; }
+          f.stats.starved += lost;
+          if (lost) { run.fx.push({ type: 'starve', owner: f.id, n: lost }); S.logMoment(run, f.short + ': ' + lost + ' WORKERS LEFT AFTER SUSTAINED HUNGER', f.id === 0 ? 'bad' : 'info', f.id); }
+        }
+        if (!lost && f.hungry === 1) run.fx.push({ type: 'hunger', owner: f.id });
       } else {
         f.hungry = 0;
         for (const s of own) s.workers = Math.min(S.crewNeed(s), s.workers + E.regrow);
