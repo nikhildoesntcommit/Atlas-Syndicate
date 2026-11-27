@@ -4,7 +4,7 @@
 (function (AS) {
   'use strict';
 
-  AS.VERSION = '7.0.0';
+  AS.VERSION = '7.1.0';
   AS.SAVE_VERSION = 7;
 
   AS.CONFIG = {
