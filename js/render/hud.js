@@ -466,23 +466,18 @@
     return y + 4;
   };
 
-  /* ================= BOTTOM STRIP: short alerts, else a hint ================= */
+  /* ================= BOTTOM TOAST: short, non-blocking feedback ================= */
   H.drawBottom = function (ctx, run) {
-    const y = G.mapBottom(), x0 = G.mapLeft();
-    D.rect(ctx, 0, y, G.W, G.TICKER_H, 1); D.rect(ctx, 0, y, G.W, 1, 3);
     const t = G.toast;
-    if (t) {
-      const k = U.clamp(Math.min(t.t, t.max - t.t) * 6, 0, 1);
-      const w = Math.min(G.W - x0 - 8, D.tw(t.text, true) + 14), x = Math.round((x0 + G.W) / 2 - w / 2);
-      D.rect(ctx, x, y + 1, w, G.TICKER_H - 1, k < 1 ? 2 : 0);
-      D.rect(ctx, x, y + 1, 3, G.TICKER_H - 1, t.col);
-      TBn(ctx, t.text.slice(0, Math.floor((w - 12) / 6)), x + 7, y + 3, t.col);
-      return;
-    }
-    const hint = G.view === 'planet' ? 'CLICK A + SLOT: BUILD.  DRAG DOWN FROM AN EXTRACTOR: DRILL.  DRAG IT ONTO A PROCESSOR OR PORT: CONNECT.  ESC: BACK'
-      : G.view === 'system' ? 'CLICK A PLANET: OPEN IT.  DRAG PLANET ONTO PLANET: PATHWAY.  ESC: GALAXY'
-      : 'CLICK YOUR SYSTEM: OPEN IT.  DRAG FROM IT ONTO A NEIGHBOUR: MOVE OR ATTACK.  B: SHOP  TAB: PANEL';
-    TS(ctx, hint, x0 + 4, y + 4, 5);
+    if (!t) return;
+    const k = U.clamp(Math.min(t.t, t.max - t.t) * 6, 0, 1);
+    const maxW = G.W - G.mapLeft() - 8;
+    const w = Math.min(maxW, D.tw(t.text, true) + 14), x = Math.round((G.mapLeft() + G.W) / 2 - w / 2);
+    const y = G.H - G.TICKER_H - 3;
+    D.rect(ctx, x + 2, y + 2, w, G.TICKER_H, 0);
+    D.frame(ctx, x, y, w, G.TICKER_H, k < 1 ? 2 : 1, t.col);
+    D.rect(ctx, x + 1, y + 1, 3, G.TICKER_H - 2, t.col);
+    TBn(ctx, t.text.slice(0, Math.floor((w - 12) / 6)), x + 7, y + 3, t.col);
   };
   H.drawNotices = function (ctx, dt) {
     let y = G.mapBottom() - 30;

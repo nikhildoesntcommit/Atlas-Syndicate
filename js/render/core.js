@@ -21,7 +21,10 @@
 
   G.HUD_H = 17;
   G.TICKER_H = 13;
-  G.bottomH = () => G.TICKER_H;
+  // The short-status ticker is an overlay, not a permanent third chrome bar.
+  // This keeps the game to the promised top bar + left command panel and gives
+  // the planet cross-section the full bottom edge of the screen.
+  G.bottomH = () => 0;
   G.mapBottom = () => G.H - G.bottomH();
   /** The collapsible left panel: full width when open, a thin strip when collapsed, absent outside play. */
   G.PANEL_STRIP = 12;
