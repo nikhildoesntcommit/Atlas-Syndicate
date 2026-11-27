@@ -1,11 +1,11 @@
-/* ATLAS SYNDICATE v6 — config.js
+/* ATLAS SYNDICATE v7 — config.js
    Every tunable number, the palette and all game data tables (resources, buildings, upgrades, events,
    factions, difficulty). Classic script: everything hangs off the single global namespace AS. */
 (function (AS) {
   'use strict';
 
-  AS.VERSION = '6.0.0';
-  AS.SAVE_VERSION = 6;
+  AS.VERSION = '7.0.0';
+  AS.SAVE_VERSION = 7;
 
   AS.CONFIG = {
     view: { minW: 400, minH: 225 },
@@ -15,9 +15,9 @@
     game: {
       length: 1800,          // 30:00 timer; most systems wins when it runs out
       protect: 240,          // 0:00-4:00: nobody may attack anybody
-      cycle: 10,             // production, salaries, rations and upkeep settle every cycle (seconds)
+      cycle: 10,             // production, food and fuel settle every cycle (seconds)
       leaderShare: 0.35,     // a coalition forms against anyone holding this share of the galaxy
-      endgame: 1080,         // from 18:00 rival capitals become everybody's priority
+      endgame: 1080,         // from 18:00 rivals go for each other's capitals
       histEvery: 10,
     },
     coalition: { duration: 300, cooldown: 30, strikeFirst: 30, strikeEvery: 30, breakShare: 0.27 },
@@ -28,30 +28,24 @@
     ground: { w: 32, h: 16, hardCost: [1, 2, 4], drillCost: 2 },
 
     econ: {
-      start: { credits: 650, alloy: 100, fuel: 40, food: 80 },
-      levy: 5,               // credits per owned system per cycle
+      start: { money: 600, gold: 0, water: 20, food: 40, fuel: 30 },
+      levy: 5,               // money per owned system per cycle (taxes)
       extractRate: 1.6,      // raw units per cycle from a drilled deposit (+0.07 per row of depth)
       depthRate: 0.07,
       procCap: 4,            // raw units a processor can take per cycle
-      bonus: 1.5,            // processor on a matching planet type
-      mint: 6,               // credits per gold unit
+      bonus: 1.5,            // processor or farm on a matching planet type
       pathCap: 6,            // units per cycle, each direction
-      basePathways: 2, maxPathways: 6,
-      popMax: 20, popFood: 0.05, popMult: 0.015,
+      maxPathways: 3,        // pathways per system
+      crew: 2,               // workers per building (they arrive with it)
+      eat: 0.2,              // food each worker eats per cycle
+      regrow: 2,             // workers per system who come back each cycle while everyone is fed
+      starve: 0.5,           // share of the unfed workers who die
     },
-    dur: { decay: 1.0, autoRepairAt: 50, repairFrac: 0.4, battleDmg: 3, raidDmg: 10 },
-    army: {
-      recruitCost: 8, salary: 0.5, salaryScale: 100, rations: 0.15,
-      trainTime: 2.0, batch: 5, maxQueue: 25, speed: 7,
-      startSoldiers: 12, startVet: 0.2, startPlatforms: 2,
-      vetPerCycle: 0.004, vetPerBattle: 0.15, vetBonus: 0.5,
-      desertFrac: 0.1, hungerMult: 0.75,
-      laneFuel: 2, fuelPer10: 2,      // fuel per lane = 2 + 2 per 10 strength sent
-    },
-    equip: { shipCost: [90, 40], shipPower: 5, shipFuel: 1, platCost: [100, 50], platformPower: 10, maxPlatforms: 6 },
-    combat: { round: 0.8, k: 0.15, defBonus: 1.2, capitalBonus: 1.15, raidRounds: 3, raidLoot: 25, retreatLoss: 0.1, maxRounds: 30 },
-    buy: { base: 480, growth: 1.25, perGarrison: 8 },
-    neutral: { core: [30, 48], arm: [[16, 24], [9, 14]], vet: 0.3 },
+    /* machinery upgrades: every building goes up to level 3; each level adds 50% throughput */
+    upgrade: { max: 3, boost: 0.5, price: [1.0, 2.0] },
+    army: { speed: 7 },
+    buy: { base: 400, growth: 1.25, perPower: 6 },
+    neutral: { core: [55, 80], arm: [[30, 42], [18, 26]] },
     events: { first: 270, every: 240, jitter: 30, warn: 60 },
     history: { every: 10 },
     selftest: { seed: 20261122 },
@@ -68,69 +62,64 @@
   AS.PAL_KEYS = '0123456789abcdefghijklmnopqrstuv';
   AS.PAL_RGB = AS.PALETTE.map(h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]);
 
-  /* ---------- resources: raw deposit -> processed stock ---------- */
-  AS.RES_KEYS = ['metal', 'gold', 'ice', 'fuel'];
+  /* ---------- raw deposits underground ---------- */
+  AS.RES_KEYS = ['gold', 'ice', 'fuel'];
   AS.RES = {
-    fuel:  { name: 'FUEL',  raw: 'CRUDE', out: 'fuel',    outName: 'FUEL',    col: 1,  hi: 10, mark: 18, ext: 'pump',     proc: 'refinery', planets: ['gas', 'cinder'],
-      use: 'FUEL MOVES ARMIES (EVERY LANE COSTS FUEL) AND KEEPS WARSHIPS RUNNING.' },
-    ice:   { name: 'ICE',   raw: 'ICE',   out: 'food',    outName: 'FOOD',    col: 25, hi: 31, mark: 26, ext: 'icedrill', proc: 'water',    planets: ['ice', 'ice2'],
-      use: 'WATER AND FOOD: SOLDIER RATIONS AND POPULATION GROWTH.' },
-    metal: { name: 'METAL', raw: 'ORE',   out: 'alloy',   outName: 'ALLOY',   col: 10, hi: 6,  mark: 11, ext: 'mine',     proc: 'smelter',  planets: ['rust', 'cinder'],
-      use: 'ALLOY: BUILDINGS, REPAIRS, WARSHIPS AND PLATFORMS.' },
-    gold:  { name: 'GOLD',  raw: 'GOLD',  out: 'credits', outName: 'CREDITS', col: 13, hi: 14, mark: 13, ext: 'goldmine', proc: 'mint',     planets: ['dwarf', 'terran'],
-      use: 'CREDITS: SALARIES, RECRUITS, PATHWAYS, UPGRADES, BUYING SYSTEMS.' },
+    gold: { name: 'GOLD',  raw: 'GOLD',  out: 'gold',  col: 13, mark: 13, ext: 'goldmine', proc: null,       planets: [],
+      use: 'GOLD: SELL IT ON THE MARKET FOR MONEY.' },
+    ice:  { name: 'ICE',   raw: 'ICE',   out: 'water', col: 25, mark: 26, ext: 'icedrill', proc: 'water',    planets: ['ice', 'ice2'],
+      use: 'ICE: A WATER PLANT MELTS IT INTO WATER, WHICH FARMS TURN INTO FOOD.' },
+    fuel: { name: 'CRUDE', raw: 'CRUDE', out: 'fuel',  col: 1,  mark: 18, ext: 'pump',     proc: 'refinery', planets: ['gas', 'cinder'],
+      use: 'CRUDE: A REFINERY TURNS IT INTO FUEL FOR YOUR MILITARY.' },
   };
-  AS.STOCK_KEYS = ['credits', 'alloy', 'fuel', 'food'];
-  AS.STOCK = { credits: { name: 'CREDITS', col: 13 }, alloy: { name: 'ALLOY', col: 6 }, fuel: { name: 'FUEL', col: 18 }, food: { name: 'FOOD', col: 22 } };
+  /* ---------- the stockpile (top bar) ---------- */
+  AS.STOCK_KEYS = ['money', 'gold', 'water', 'food', 'fuel'];
+  AS.STOCK = {
+    money: { name: 'MONEY', col: 31, price: 0,
+      use: 'BUYS BUILDINGS, DRILLING, UPGRADES, MILITARY AND SYSTEMS. EARNED BY SELLING ON THE MARKET, PLUS 5 TAX PER SYSTEM EVERY CYCLE.' },
+    gold:  { name: 'GOLD',  col: 13, price: 5,  use: 'MINED BY GOLD MINES. SELL IT ON THE MARKET FOR MONEY.' },
+    water: { name: 'WATER', col: 26, price: 2,  use: 'MADE BY WATER PLANTS FROM ICE. GREENHOUSES AND LIVESTOCK FARMS DRINK IT.' },
+    food:  { name: 'FOOD',  col: 22, price: 3,  use: 'MADE BY FARMS FROM WATER. YOUR WORKERS EAT IT; WITHOUT IT THEY STARVE AND MACHINES STOP.' },
+    fuel:  { name: 'FUEL',  col: 18, price: 4,  use: 'MADE BY REFINERIES FROM CRUDE. YOUR MILITARY BURNS IT; SHORT OF FUEL, IT FIGHTS AT THAT SHARE OF ITS POWER.' },
+  };
+  AS.MARKET_KEYS = ['gold', 'water', 'food', 'fuel'];
 
-  /* ---------- buildings: exactly two per resource ---------- */
+  /* ---------- buildings ----------
+     ext:  extractor, drilled down to a deposit. The gold mine delivers straight to your stock; the ice
+           drill and fuel pump need a conveyor to their processor (or to a port).
+     proc: processor, takes raw from conveyors: water plant (1 ice -> 2 water), refinery (1 crude -> 1 fuel).
+     farm: takes water from your stock and grows food. No conveyor needed. */
   AS.BLD = {
-    mine:     { name: 'MINE',        res: 'metal', role: 'ext',  cost: [60, 0],   art: 'mine' },
-    smelter:  { name: 'SMELTER',     res: 'metal', role: 'proc', cost: [85, 0],  art: 'smelter' },
-    goldmine: { name: 'GOLD MINE',   res: 'gold',  role: 'ext',  cost: [60, 15], art: 'mine' },
-    mint:     { name: 'MINT',        res: 'gold',  role: 'proc', cost: [80, 20], art: 'depot' },
-    icedrill: { name: 'ICE DRILL',   res: 'ice',   role: 'ext',  cost: [50, 15],  art: 'drill' },
-    water:    { name: 'WATER PLANT', res: 'ice',   role: 'proc', cost: [70, 20], art: 'agri' },
-    pump:     { name: 'FUEL PUMP',   res: 'fuel',  role: 'ext',  cost: [50, 15],  art: 'skimmer' },
-    refinery: { name: 'REFINERY',    res: 'fuel',  role: 'proc', cost: [70, 20], art: 'fab' },
+    goldmine:  { name: 'GOLD MINE',      short: 'GOLD MINE',  res: 'gold', role: 'ext',  cost: 90,  art: 'mine',
+      does: 'DRILL TO GOLD. GOLD GOES STRAIGHT TO YOUR STOCK.' },
+    icedrill:  { name: 'ICE DRILL',      short: 'ICE DRILL',  res: 'ice',  role: 'ext',  cost: 60,  art: 'drill',
+      does: 'DRILL TO ICE, THEN CONVEYOR TO A WATER PLANT.' },
+    water:     { name: 'WATER PLANT',    short: 'WATER PLANT', res: 'ice', role: 'proc', cost: 80,  art: 'tank', yield: 2,
+      does: 'MELTS ICE: 1 ICE = 2 WATER.' },
+    greenhouse:{ name: 'GREENHOUSE',     short: 'GREENHOUSE', res: 'food', role: 'farm', cost: 60,  art: 'agri', water: 2, food: 4,
+      does: 'DRINKS 2 WATER, GROWS 4 FOOD PER CYCLE.' },
+    livestock: { name: 'LIVESTOCK FARM', short: 'LIVESTOCK',  res: 'food', role: 'farm', cost: 110, art: 'barn', water: 4, food: 9,
+      does: 'DRINKS 4 WATER, RAISES 9 FOOD PER CYCLE.' },
+    pump:      { name: 'FUEL PUMP',      short: 'FUEL PUMP',  res: 'fuel', role: 'ext',  cost: 60,  art: 'skimmer',
+      does: 'DRILL TO CRUDE, THEN CONVEYOR TO A REFINERY.' },
+    refinery:  { name: 'REFINERY',       short: 'REFINERY',   res: 'fuel', role: 'proc', cost: 90,  art: 'fab', yield: 1,
+      does: 'REFINES CRUDE: 1 CRUDE = 1 FUEL.' },
   };
-  // the mine and smelter cost no alloy, so alloy production can always be restarted
-  AS.BLD_KEYS = ['mine', 'smelter', 'goldmine', 'mint', 'icedrill', 'water', 'pump', 'refinery'];
-  AS.COSTS = { conveyor: [10, 0], pathway: [60, 20] };
+  AS.BLD_KEYS = ['goldmine', 'icedrill', 'water', 'greenhouse', 'livestock', 'pump', 'refinery'];
+  AS.FARM_PLANETS = ['terran'];
+  AS.COSTS = { conveyor: 10, pathway: 80 };
+  AS.upgPrice = (kind, lvl) => Math.round(AS.BLD[kind].cost * AS.CONFIG.upgrade.price[Math.max(0, Math.min(1, lvl - 1))]);
 
-  /* ---------- the upgrade shop: four tracks, bought in order, prices rise along each track ---------- */
-  AS.UPGRADES = {
-    ext: { name: 'EXTRACTION', col: 11, items: [
-      { key: 'bits',   name: 'DIAMOND BITS',       desc: 'DRILLING COSTS 30% LESS.' },
-      { key: 'rigs',   name: 'HIGH-PRESSURE RIGS', desc: 'EXTRACTORS +25% OUTPUT.' },
-      { key: 'shafts', name: 'REINFORCED SHAFTS',  desc: 'EXTRACTORS AND DRILLS WEAR 50% SLOWER.' },
-      { key: 'deep',   name: 'DEEP-CORE RIGS',     desc: 'EXTRACTORS +25% OUTPUT.' },
-      { key: 'survey', name: 'SURFACE SURVEY',     desc: '+1 BUILDING SLOT ON EVERY PLANET.' },
-    ] },
-    proc: { name: 'PROCESSING', col: 13, items: [
-      { key: 'hoppers', name: 'LARGER HOPPERS',  desc: 'PROCESSORS TAKE 30% MORE INPUT.' },
-      { key: 'alloyx',  name: 'CLEAN SMELTING',  desc: 'SMELTERS MAKE 25% MORE ALLOY.' },
-      { key: 'minting', name: 'FINE MINTING',    desc: 'MINTS PAY 8 CREDITS PER GOLD INSTEAD OF 6.' },
-      { key: 'hydro',   name: 'HYDROPONICS',     desc: 'WATER PLANTS MAKE 40% MORE FOOD.' },
-      { key: 'crack',   name: 'CRACKING TOWERS', desc: 'REFINERIES MAKE 40% MORE FUEL.' },
-    ] },
-    log: { name: 'LOGISTICS', col: 26, items: [
-      { key: 'wide',   name: 'WIDE PATHWAYS',    desc: 'PATHWAYS CARRY 50% MORE.' },
-      { key: 'path1',  name: 'EXTRA PATHWAY',    desc: '+1 PATHWAY IN EVERY SYSTEM.' },
-      { key: 'belts',  name: 'STEEL CONVEYORS',  desc: 'CONVEYORS AND PATHWAYS WEAR 50% SLOWER.' },
-      { key: 'path2',  name: 'SECOND PATHWAY',   desc: '+1 PATHWAY IN EVERY SYSTEM.' },
-      { key: 'drives', name: 'EFFICIENT DRIVES', desc: 'ARMIES USE 40% LESS FUEL.' },
-    ] },
-    mil: { name: 'MILITARY', col: 17, items: [
-      { key: 'wages',   name: 'DRILL INSTRUCTORS', desc: 'SOLDIER SALARIES -20%.' },
-      { key: 'kitchen', name: 'FIELD KITCHENS',    desc: 'SOLDIER RATIONS -40%.' },
-      { key: 'grid',    name: 'PLATFORM GRID',     desc: 'DEFENCE PLATFORMS +50% STRENGTH.' },
-      { key: 'guns',    name: 'HEAVY GUNS',        desc: 'WARSHIPS +50% STRENGTH.' },
-      { key: 'cadre',   name: 'VETERAN CADRE',     desc: 'VETERANS UP TO +100% STRENGTH INSTEAD OF +50%.' },
-    ] },
+  /* ---------- the military shop: power adds up; the bigger side wins and keeps the difference ---------- */
+  AS.UNITS = {
+    ship:      { name: 'SPACE SHIP',            short: 'SHIPS',      power: 1,  cost: 15,  fuel: 0.02, icon: 'ship',
+      desc: 'POWER 1. CHEAP, FUEL-LIGHT, FINE-GRAINED.' },
+    destroyer: { name: 'DESTROYER',             short: 'DESTROYERS', power: 5,  cost: 70,  fuel: 0.15, icon: 'destroyer',
+      desc: 'POWER 5. GOOD VALUE, MODEST FUEL.' },
+    cannon:    { name: 'ORBITAL STRIKE CANNON', short: 'CANNONS',    power: 10, cost: 130, fuel: 0.4,  icon: 'cannon',
+      desc: 'POWER 10. CHEAPEST PER POWER, HEAVIEST ON FUEL.' },
   };
-  AS.UPG_TRACKS = ['ext', 'proc', 'log', 'mil'];
-  AS.upgPrice = level => [Math.round(150 * Math.pow(1.6, level)), Math.round(20 * Math.pow(1.6, level))];
+  AS.UNIT_KEYS = ['ship', 'destroyer', 'cannon'];
 
   /* ---------- factions: slot 0 is the player ---------- */
   AS.FACTIONS = [
@@ -160,36 +149,37 @@
   AS.EVENTS = {
     storm:  { name: 'SOLAR STORM',       dur: 60,  w: 1.0 },
     boom:   { name: 'GOLD RUSH',         dur: 90,  w: 1.0, value: 1.5 },
-    mercs:  { name: 'MERCENARY SURPLUS', dur: 90,  w: 0.9, salary: 0.5, train: 3 },
+    mercs:  { name: 'ARMS SURPLUS',      dur: 90,  w: 0.9, price: 0.7 },
     lane:   { name: 'LANE COLLAPSE',     dur: 120, w: 0.9 },
-    pirate: { name: 'PIRATE SURGE',      dur: 0,   w: 0.8, mult: 1.5, add: 5 },
+    pirate: { name: 'PIRATE SURGE',      dur: 0,   w: 0.8, mult: 1.5, add: 8 },
   };
   AS.EVENT_KEYS = Object.keys(AS.EVENTS);
 
   /* ---------- difficulty: full, fair economies everywhere; Easy rivals play worse, Hard rivals play faster ---------- */
   AS.DIFFICULTY = {
-    easy:   { name: 'EASY',   think: 15.0, odds: 0.24, sources: 1, pick: 0.9,  focus: 0.45, react: 0.5, repairAt: 30, income: 1.0, acts: 1, aggr: 0.45,
-      desc: 'RIVALS THINK SLOWLY, PICK WORSE TARGETS AND TAKE FEWER RISKS.' },
-    normal: { name: 'NORMAL', think: 6.0, odds: 0.06,  sources: 2, pick: 0.35, focus: 0.85, react: 0.85, repairAt: 35, income: 1.0, acts: 2, aggr: 0.75,
+    easy:   { name: 'EASY',   think: 15.0, margin: 0.6,  sources: 1, pick: 0.9,  focus: 0.45, react: 0.5, income: 1.0, acts: 1, aggr: 0.45,
+      desc: 'RIVALS THINK SLOWLY, PICK WORSE TARGETS AND ONLY ATTACK WITH A BIG EDGE.' },
+    normal: { name: 'NORMAL', think: 6.0,  margin: 0.25, sources: 2, pick: 0.35, focus: 0.85, react: 0.85, income: 1.0, acts: 2, aggr: 0.75,
       desc: 'RIVALS PLAY THE SAME RULES AS YOU, AT A FAIR PACE.' },
-    hard:   { name: 'HARD',   think: 2.5, odds: -0.05, sources: 3, pick: 0.0,  focus: 1.15, react: 1.3, repairAt: 45, income: 1.15,
-      desc: 'FAST, COORDINATED RIVALS. THEY EARN +15% CREDITS (STATED BONUS).' },
+    hard:   { name: 'HARD',   think: 2.5,  margin: 0.1,  sources: 3, pick: 0.0,  focus: 1.15, react: 1.3, income: 1.15, acts: 3, aggr: 1.0,
+      desc: 'FAST, COORDINATED RIVALS. THEIR EXTRACTORS DIG 15% MORE (STATED BONUS).' },
   };
   AS.DIFF_KEYS = ['easy', 'normal', 'hard'];
 
   /* ---------- achievements (stored locally) ---------- */
   AS.ACHIEVEMENTS = [
-    { id: 'alloy',     name: 'FIRST ALLOY',      desc: 'Smelt your first alloy.' },
-    { id: 'gold',      name: 'STRIKE GOLD',      desc: 'Mint credits from gold.' },
+    { id: 'gold',      name: 'STRIKE GOLD',      desc: 'Sell gold on the market.' },
+    { id: 'water',     name: 'FIRST WATER',      desc: 'Melt ice into water.' },
+    { id: 'farm',      name: 'WELL FED',         desc: 'Feed your workers from your own farms.' },
     { id: 'port',      name: 'ROUTED',           desc: 'Process a resource on another planet through a port.' },
+    { id: 'upgrade',   name: 'TOP SPEC',         desc: 'Upgrade a building to level 3.' },
     { id: 'conquer',   name: 'FIRST CONQUEST',   desc: 'Capture a system by force.' },
     { id: 'buyer',     name: 'PEACEFUL TERMS',   desc: 'Buy a neutral system.' },
-    { id: 'hold',      name: 'HELD THE LINE',    desc: 'Win a defensive battle against a rival.' },
+    { id: 'hold',      name: 'HELD THE LINE',    desc: 'Beat an attack on one of your systems.' },
     { id: 'capital',   name: 'DECAPITATION',     desc: 'Capture a rival capital.' },
     { id: 'coalition', name: 'COALITION',        desc: 'Fight in a coalition against a leader.' },
-    { id: 'shop',      name: 'TOP OF THE TRACK', desc: 'Buy all five upgrades of one track.' },
     { id: 'eight',     name: 'EIGHT SYSTEMS',    desc: 'Hold 8 systems at once.' },
-    { id: 'army100',   name: 'STANDING ARMY',    desc: 'Field 100 soldiers.' },
+    { id: 'power200',  name: 'ARMADA',           desc: 'Reach a military power of 200.' },
     { id: 'win',       name: 'GALAXY TAKEN',     desc: 'Win a game.' },
     { id: 'winhard',   name: 'HARD TERMS',       desc: 'Win on Hard.' },
     { id: 'sweep',     name: 'CLEAN SWEEP',      desc: 'Eliminate every rival.' },

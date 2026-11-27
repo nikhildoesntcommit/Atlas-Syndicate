@@ -1,4 +1,4 @@
-/* ATLAS SYNDICATE v6 — sim/selftest.js
+/* ATLAS SYNDICATE v7 — sim/selftest.js
    Fast rule checks that run in the browser (tests/selftest.html, ?selftest=1) and in Node. */
 (function (AS) {
   'use strict';
@@ -10,6 +10,7 @@
     const lines = [];
     let pass = true;
     const check = (name, ok, info) => { lines.push((ok ? 'PASS ' : 'FAIL ') + name + (info ? '  (' + info + ')' : '')); if (!ok) pass = false; };
+    const cycle = run => { for (let i = 0; i < Math.round(C.game.cycle / C.sim.step) + 1; i++) { S.step(run, C.sim.step); run.fx.length = 0; } };
 
     // galaxy: 24 systems, symmetric homes
     let count = true, deg = true, conn = true, fair = true, reach = true;
@@ -34,57 +35,94 @@
     const run = S.createRun(1234, {});
     S.begin(run, S.homeCandidates(run)[0]);
     const f = run.factions[0], home = run.systems[f.capital], p = home.planets[0];
-    f.credits = 5000; f.alloy = 500;
+    check('everyone starts with no military', run.factions.every(x => S.militaryPower(run, x.id) === 0));
     check('every home has the same four planets', run.factions.every(x => JSON.stringify(run.systems[x.capital].planets.map(q => q.rock)) === JSON.stringify(home.planets.map(q => q.rock))));
-    const metal = p.deposits.find(d => d.res === 'metal');
-    const mine = S.act(run, 0, 'build', { sys: home.id, planet: 0, slot: 0, kind: 'mine' });
-    check('place an extractor in a surface slot', mine.ok);
-    check('a second building cannot share the slot', !S.act(run, 0, 'build', { sys: home.id, planet: 0, slot: 0, kind: 'smelter' }).ok);
+    f.money = 5000;
+    const gold = p.deposits.find(d => d.res === 'gold');
+    const gm = S.act(run, 0, 'build', { sys: home.id, planet: 0, slot: 0, kind: 'goldmine' });
+    check('place an extractor in a surface slot; its 2 workers arrive with it', gm.ok && home.workers === C.econ.crew);
+    check('a second building cannot share the slot', !S.act(run, 0, 'build', { sys: home.id, planet: 0, slot: 0, kind: 'water' }).ok);
     const barrierPath = [];
     for (let y = 0; y < S.GH; y++) barrierPath.push(y * S.GW + S.slotX(p, 0, f));
     const hitsBarrier = barrierPath.findIndex(i => S.rockAt(p, i) === 3);
-    if (hitsBarrier > 0) check('a drill cannot cross a barrier', !S.act(run, 0, 'drill', { sys: home.id, planet: 0, bld: mine.bld.id, path: barrierPath.slice(0, hitsBarrier + 1) }).ok);
-    check('a drill must end in a matching deposit', !S.act(run, 0, 'drill', { sys: home.id, planet: 0, bld: mine.bld.id, path: [S.slotX(p, 0, f)] }).ok);
-    const dr = S.bestDrill(run, f, p, 0, metal);
-    const before = f.credits;
-    const d = S.act(run, 0, 'drill', { sys: home.id, planet: 0, bld: mine.bld.id, path: dr.path });
-    check('drill to the metal deposit costs what was shown', d.ok && before - f.credits === dr.cost, 'cost ' + dr.cost);
+    if (hitsBarrier > 0) check('a drill cannot cross a barrier', !S.act(run, 0, 'drill', { sys: home.id, planet: 0, bld: gm.bld.id, path: barrierPath.slice(0, hitsBarrier + 1) }).ok);
+    check('a drill must end in a matching deposit', !S.act(run, 0, 'drill', { sys: home.id, planet: 0, bld: gm.bld.id, path: [S.slotX(p, 0, f)] }).ok);
+    const dr = S.bestDrill(run, f, p, 0, gold);
+    const before = f.money;
+    const d = S.act(run, 0, 'drill', { sys: home.id, planet: 0, bld: gm.bld.id, path: dr.path });
+    check('drill to the gold deposit costs what was shown', d.ok && before - f.money === dr.cost, 'cost ' + dr.cost);
     let fl = S.sysFlow(run, home);
-    check('a drilled extractor with no processor is blocked, with the reason', fl.B[mine.bld.id].status === 'blocked' && /NO PROCESSOR/.test(fl.B[mine.bld.id].reason));
-    const sm = S.act(run, 0, 'build', { sys: home.id, planet: 0, slot: 1, kind: 'smelter' });
-    check('a conveyor only joins matching resources', !S.act(run, 0, 'connect', { sys: home.id, planet: 0, from: { b: mine.bld.id }, to: { b: S.act(run, 0, 'build', { sys: home.id, planet: 0, slot: 2, kind: 'mint' }).bld.id } }).ok);
-    S.act(run, 0, 'connect', { sys: home.id, planet: 0, from: { b: mine.bld.id }, to: { b: sm.bld.id } });
-    fl = S.sysFlow(run, home);
-    check('mine > smelter makes alloy', fl.B[mine.bld.id].status === 'ok' && fl.out.alloy > 0, (Math.round(fl.out.alloy * 10) / 10) + ' alloy/cycle');
-    const a0 = f.alloy, amt0 = metal.amount;
-    for (let i = 0; i < 101; i++) { S.step(run, C.sim.step); run.fx.length = 0; }
-    check('the cycle pays what the buildings claim and depletes the deposit', f.alloy > a0 && metal.amount < amt0 && Math.abs(f.lastCycle.got.alloy - fl.out.alloy) < 1e-6);
-    // ports: ice on planet 0, water plant on planet 1
+    check('a drilled gold mine delivers gold with no processor', fl.B[gm.bld.id].status === 'ok' && fl.out.gold > 0, (Math.round(fl.out.gold * 10) / 10) + ' gold/cycle');
+    check('a gold mine takes no conveyor', !S.act(run, 0, 'connect', { sys: home.id, planet: 0, from: { b: gm.bld.id }, to: { b: gm.bld.id } }).ok);
+    const g0 = f.gold, amt0 = gold.amount;
+    cycle(run);
+    check('the cycle pays what the buildings claim and depletes the deposit', f.gold > g0 && gold.amount < amt0 && Math.abs(f.lastCycle.got.gold - fl.out.gold) < 1e-6);
+    const m0 = f.money, gHave = Math.floor(f.gold);
+    check('gold sells on the market at a fixed price', S.act(run, 0, 'trade', { res: 'gold', qty: -gHave }).ok && Math.abs(f.money - m0 - gHave * AS.STOCK.gold.price) < 1e-6);
+    check('buying costs the same fixed price', (() => { const m = f.money, w = f.water; return S.act(run, 0, 'trade', { res: 'water', qty: 10 }).ok && Math.abs(m - f.money - 10 * AS.STOCK.water.price) < 1e-6 && f.water === w + 10; })());
+    // water: ice drill > conveyor > water plant; greenhouse: water > food
     const ice = p.deposits.find(x => x.res === 'ice');
+    const idr = S.act(run, 0, 'build', { sys: home.id, planet: 0, slot: 1, kind: 'icedrill' });
+    S.act(run, 0, 'drill', { sys: home.id, planet: 0, bld: idr.bld.id, path: S.bestDrill(run, f, p, 1, ice).path });
+    fl = S.sysFlow(run, home);
+    check('a drilled ice drill with no processor is blocked, with the reason', fl.B[idr.bld.id].status === 'blocked' && /WATER PLANT/.test(fl.B[idr.bld.id].reason));
+    const wp = S.act(run, 0, 'build', { sys: home.id, planet: 0, slot: 2, kind: 'water' });
+    check('a conveyor only joins matching resources', !S.act(run, 0, 'connect', { sys: home.id, planet: 0, from: { b: idr.bld.id }, to: { b: S.act(run, 0, 'build', { sys: home.id, planet: 0, slot: 3, kind: 'refinery' }).bld.id } }).ok);
+    S.act(run, 0, 'connect', { sys: home.id, planet: 0, from: { b: idr.bld.id }, to: { b: wp.bld.id } });
+    fl = S.sysFlow(run, home);
+    check('ice drill > water plant makes 2 water per ice', fl.out.water > 0 && Math.abs(fl.out.water - 2 * fl.B[idr.bld.id].rate * S.procBonus(p, 'water')) < 1e-6);
+    const gh = S.act(run, 0, 'build', { sys: home.id, planet: 0, slot: 4, kind: 'greenhouse' });
+    f.water = 50; f.food = 0;
+    fl = S.sysFlow(run, home);
+    cycle(run);
+    check('a greenhouse drinks water from the stock and grows food', gh.ok && f.lastCycle.got.food > 0 && Math.abs(f.lastCycle.got.food - fl.farmFood) < 1e-6);
+    // workers: no food, they die, machines stop; fed again, they return
+    f.food = 0; f.water = 0;
+    home.planets[0].blds = home.planets[0].blds.filter(b => b.kind !== 'greenhouse' && b.kind !== 'livestock');
+    home.workers = S.crewNeed(home);
+    const w0 = home.workers;
+    cycle(run);
+    fl = S.sysFlow(run, home);
+    check('without food workers die and some machines stop', home.workers < w0 && f.stats.starved > 0 && Object.values(fl.B).some(b => b.status === 'nocrew'));
+    f.food = 500;
+    for (let i = 0; i < 6; i++) cycle(run);
+    check('fed again, the workers come back', home.workers === S.crewNeed(home));
+    // machinery upgrades instead of wear
+    const r0 = S.sysFlow(run, home).B[gm.bld.id].rate;
+    const up = S.act(run, 0, 'upgrade', { sys: home.id, planet: 0, bld: gm.bld.id });
+    check('an upgrade adds 50% throughput', up.ok && Math.abs(S.sysFlow(run, home).B[gm.bld.id].rate - r0 * 1.5) < 1e-6);
+    S.act(run, 0, 'upgrade', { sys: home.id, planet: 0, bld: gm.bld.id });
+    check('upgrades stop at level 3', !S.act(run, 0, 'upgrade', { sys: home.id, planet: 0, bld: gm.bld.id }).ok && gm.bld.lvl === 3);
+    check('nothing wears out', JSON.stringify(home).indexOf('"dur"') < 0);
+    // ports
     const pw = S.act(run, 0, 'pathway', { sys: home.id, a: 0, b: 1 });
     check('open a pathway between two planets', pw.ok);
-    const idr = S.act(run, 0, 'build', { sys: home.id, planet: 0, slot: 3, kind: 'icedrill' });
-    S.act(run, 0, 'drill', { sys: home.id, planet: 0, bld: idr.bld.id, path: S.bestDrill(run, f, p, 3, ice).path });
-    S.act(run, 0, 'connect', { sys: home.id, planet: 0, from: { b: idr.bld.id }, to: { p: pw.pathway.id } });
-    fl = S.sysFlow(run, home);
-    check('ice sent to a port with nothing on the other side is blocked', fl.B[idr.bld.id].status === 'blocked');
-    const wp = S.act(run, 0, 'build', { sys: home.id, planet: 1, slot: 0, kind: 'water' });
-    S.act(run, 0, 'connect', { sys: home.id, planet: 1, from: { p: pw.pathway.id }, to: { b: wp.bld.id } });
-    fl = S.sysFlow(run, home);
-    check('ice travels through the pathway to a water plant on another planet', fl.out.food > 0 && fl.P[pw.pathway.id].ab + fl.P[pw.pathway.id].ba > 0);
-    home.planets[1].blds[0].dur = 0;
-    check('a broken processor stops the chain, with the reason', /BROKEN/.test(S.sysFlow(run, home).B[idr.bld.id].reason));
-    check('repair costs credits and alloy', S.act(run, 0, 'repair', { sys: home.id, kind: 'all' }).ok && home.planets[1].blds[0].dur === 100);
-    const up = S.act(run, 0, 'upgrade', { track: 'ext' });
-    check('the upgrade shop applies its effect', up.ok && f.mods.drill === 0.7);
-    // military costs
+    // military: units, power, the subtraction rule, fuel
+    const bu = S.act(run, 0, 'units', { sys: home.id, kind: 'cannon', n: 2 });
+    S.act(run, 0, 'units', { sys: home.id, kind: 'destroyer', n: 1 });
+    S.act(run, 0, 'units', { sys: home.id, kind: 'ship', n: 3 });
+    check('the shop sells ships (1), destroyers (5) and cannons (10)', bu.ok && S.sysPower(run, home) === 28);
     run.t = C.game.protect + 1;
-    const fuel0 = f.fuel;
-    const tgt = S.neighbours(run, home.id).find(n => run.systems[n].owner === -1);
-    run.systems[tgt].gar.n = 1; home.gar.n = 40;
-    check('moving an army costs fuel', S.act(run, 0, 'move', { from: home.id, to: tgt, frac: 1 }).ok && f.fuel < fuel0);
-    f.fuel = 0; home.gar.n = 20;
-    check('no fuel, no move', S.act(run, 0, 'move', { from: home.id, to: S.neighbours(run, home.id)[0], frac: 0.5 }).reason === 'nofuel');
+    const tgt = S.neighbours(run, home.id).find(n => run.systems[n].owner === -1), ts = run.systems[tgt];
+    S.setGarPower(ts.gar, 13);
+    const mv = S.act(run, 0, 'move', { from: home.id, to: tgt, frac: 1 });
+    for (let i = 0; i < 400 && run.armies.length; i++) { S.step(run, C.sim.step); run.fx.length = 0; }
+    check('the bigger power wins and keeps the difference (28 vs 13 leaves 15)', mv.ok && ts.owner === 0 && S.sysPower(run, ts) === 15, S.sysPower(run, ts) + ' left');
+    const tgt2 = S.neighbours(run, tgt).find(n => run.systems[n].owner === -1);
+    if (tgt2 !== undefined) {
+      const t2 = run.systems[tgt2];
+      S.setGarPower(t2.gar, 40);
+      S.act(run, 0, 'move', { from: tgt, to: tgt2, frac: 1 });
+      for (let i = 0; i < 400 && run.armies.length; i++) { S.step(run, C.sim.step); run.fx.length = 0; }
+      check('the smaller power is wiped out; the defender keeps the difference (40 vs 15 leaves 25)', t2.owner === -1 && S.sysPower(run, t2) === 25);
+    }
+    check('survivors keep the biggest units', JSON.stringify(S.survivors({ ship: 3, destroyer: 1, cannon: 2 }, 15)) === JSON.stringify({ ship: 0, destroyer: 1, cannon: 1 }));
+    S.act(run, 0, 'units', { sys: home.id, kind: 'cannon', n: 5 });
+    f.fuel = 0;
+    cycle(run);
+    check('out of fuel, the military fights at the share of fuel it gets', f.fuelEff < 1e-9 && S.sysPower(run, home) === 0);
+    S.act(run, 0, 'trade', { res: 'fuel', qty: 50 });
+    check('fuel bought on the market restores it at once', f.fuelEff === 1 && S.sysPower(run, home) === 50);
     const fails = [];
     S.checkInvariants(run, fails);
     check('invariants hold', !fails.length, fails.slice(0, 3).join('; '));
@@ -106,6 +144,9 @@
     check('6 minutes of all-AI play: no invariant or NaN failures', !bad, bad);
     const blds = r3.factions.map(x => r3.systems.filter(s => s.owner === x.id).reduce((a, s) => a + s.planets.reduce((q, pl) => q + pl.blds.length, 0), 0));
     check('every AI builds a real economy through the planet view', blds.every(n => n >= 6), blds.join(','));
+    const farms = r3.factions.map(x => r3.systems.filter(s => s.owner === x.id).reduce((a, s) => a + s.planets.reduce((q, pl) => q + pl.blds.filter(b => AS.BLD[b.kind].role === 'farm').length, 0), 0));
+    check('every AI grows its own food', farms.every(n => n >= 1), farms.join(','));
+    check('every AI has bought a military by 6:00', r3.factions.every(x => S.militaryPower(r3, x.id) > 0));
     return { pass, lines };
   };
 })(globalThis.AS = globalThis.AS || {});

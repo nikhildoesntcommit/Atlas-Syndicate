@@ -1,4 +1,4 @@
-/* ATLAS SYNDICATE v6 — sim/galaxy.js
+/* ATLAS SYNDICATE v7 — sim/galaxy.js
    Seeded galaxy: a stylised six-armed spiral of 24 star systems (six core systems, six arms of three).
    The lanes are laid out with rotational symmetry, so every home (an arm tip) is exactly as far from its
    nearest rivals and from the core as every other home: no start is better than another.
@@ -12,8 +12,8 @@
   S.newSystem = function (id, name, x, y, region, arm, k) {
     return {
       id, name, x, y, region, arm, k, lanes: [], owner: -1, capital: -1,
-      gar: { n: 0, vet: 0, ships: 0, sdur: 100 }, plat: { n: 0, dur: 100 }, train: { q: 0, prog: 0 },
-      planets: [], pathways: [], pop: 0, battle: 0, lastBattle: -999, lastLost: -999, lastCaptured: -999, captureCount: 0, raidedAt: -999, flow: null,
+      gar: { ship: 0, destroyer: 0, cannon: 0 }, workers: 0,
+      planets: [], pathways: [], lastBattle: -999, lastLost: -999, lastCaptured: -999, captureCount: 0, flow: null,
     };
   };
 
@@ -56,8 +56,7 @@
       const a0 = rng() * U.TAU;
       s.planets.forEach((p, i) => { p.orbit = (i + 1) / count; p.phase = a0 + i * 2.4; p.name = s.name + ' ' + AS.PLANET_SUFFIX[i]; });   // golden-angle spacing: planets never start bunched
       const N = C.neutral, band = s.region === 'core' ? N.core : N.arm[Math.min(s.k, N.arm.length - 1)];
-      s.gar.n = Math.round(band[0] + rng() * (band[1] - band[0]));
-      s.gar.vet = N.vet;
+      S.setGarPower(s.gar, Math.round(band[0] + rng() * (band[1] - band[0])));
     }
     run.systems = systems;
     run.lanes = lanes;
@@ -89,6 +88,9 @@
     const mx = Math.max(1, ...between);
     run.systems.forEach((s, i) => { s.choke = Math.round(between[i] / mx * 100) / 100; });
   };
+
+  /** Independent garrisons: their power as destroyers plus ships. */
+  S.setGarPower = function (g, p) { p = Math.max(0, Math.round(p)); g.cannon = 0; g.destroyer = Math.floor(p / 5); g.ship = p % 5; };
 
   /* ---------- graph helpers ---------- */
   S.otherEnd = (run, laneId, sysId) => { const l = run.lanes[laneId]; return l.a === sysId ? l.b : l.a; };

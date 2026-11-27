@@ -1,6 +1,6 @@
-/* ATLAS SYNDICATE v6 — sim/events.js
+/* ATLAS SYNDICATE v7 — sim/events.js
    Galaxy events, about every 4 minutes, each announced 60 seconds before it happens so everyone can
-   prepare: solar storm, gold rush, mercenary surplus, lane collapse, pirate surge. */
+   prepare: solar storm, gold rush, arms surplus, lane collapse, pirate surge. */
 (function (AS) {
   'use strict';
 
@@ -31,10 +31,10 @@
   S.eventText = function (run, e) {
     switch (e.type) {
       case 'storm': return 'PATHWAYS IN ' + S.regionName(run, e) + ' STOP FOR ' + AS.EVENTS.storm.dur + ' S';
-      case 'boom': return 'MINTS PAY 50% MORE FOR ' + AS.EVENTS.boom.dur + ' S';
-      case 'mercs': return 'SALARIES AND RECRUITING -50%, TRAINING 3X FASTER FOR ' + AS.EVENTS.mercs.dur + ' S';
+      case 'boom': return 'GOLD SELLS FOR 50% MORE FOR ' + AS.EVENTS.boom.dur + ' S';
+      case 'mercs': return 'MILITARY UNITS 30% CHEAPER FOR ' + AS.EVENTS.mercs.dur + ' S';
       case 'lane': { const l = run.lanes[e.lane]; return 'LANE ' + run.systems[l.a].name + ' - ' + run.systems[l.b].name + ' CLOSES FOR ' + AS.EVENTS.lane.dur + ' S'; }
-      case 'pirate': return 'EVERY INDEPENDENT GARRISON GROWS BY 50% +5';
+      case 'pirate': return 'EVERY INDEPENDENT GARRISON GROWS BY 50% +' + AS.EVENTS.pirate.add + ' POWER';
     }
     return '';
   };
@@ -51,7 +51,7 @@
     const def = AS.EVENTS[e.type];
     const act = Object.assign({}, e, { until: run.t + def.dur, start: run.t });
     if (e.type === 'lane') run.lanes[e.lane].closedUntil = run.t + def.dur;
-    if (e.type === 'pirate') for (const s of run.systems) if (s.owner === -1 && !s.battle) s.gar.n = Math.round(s.gar.n * def.mult + def.add);
+    if (e.type === 'pirate') for (const s of run.systems) if (s.owner === -1) S.setGarPower(s.gar, S.rawPower(s.gar) * def.mult + def.add);
     if (def.dur > 0) ev.active.push(act);
     ev.history.push({ type: e.type, t: Math.round(run.t) });
     run.fx.push({ type: 'event', ev: e.type });

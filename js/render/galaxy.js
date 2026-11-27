@@ -1,6 +1,6 @@
-/* ATLAS SYNDICATE v6 — render/galaxy.js
+/* ATLAS SYNDICATE v7 — render/galaxy.js
    The galaxy view (Risk): a dithered spiral backdrop, hyperlanes, star systems with owner colour,
-   army strength as a number, status icons, armies flowing along lanes as pixel streams, battle dice,
+   military power as a number, status icons, armies flowing along lanes as pixel streams, battle flashes,
    and the particles shared with the system view. Fog: exact numbers only where the player can see. */
 (function (AS) {
   'use strict';
@@ -117,16 +117,11 @@
     const t = a.wait > 0 ? 0.92 : U.clamp(a.prog, 0, 1);
     return { x: A.x + (B.x - A.x) * t, y: A.y + (B.y - A.y) * t, dx: B.x - A.x, dy: B.y - A.y };
   };
-  /** What the viewer knows about a system: exact strength, or only a size band. */
+  /** What the viewer knows about a system: exact power, or only a size band. */
   Gal.known = function (run, s) {
     const vis = S.visibility(run, Gal.viewer());
-    const v = Math.round(S.defStrength(run, s));
-    return vis[s.id] ? { exact: true, v, text: String(v) } : { exact: false, v, text: S.sizeBand(S.garStrength(run, s)) };
-  };
-  Gal.damaged = function (run, s) {
-    if (s.owner < 0) return false;
-    for (const r of S.repairList(run, s)) if (r.dur < 30 && r.kind !== 'ships' && r.kind !== 'plat') return true;
-    return false;
+    const v = Math.round(S.sysPower(run, s));
+    return vis[s.id] ? { exact: true, v, text: String(v) } : { exact: false, v, text: S.sizeBand(v) };
   };
 
   function line(ctx, x0, y0, x1, y1, col, dash, phase) {
@@ -177,7 +172,7 @@
       if (!S.armyVisible(run, me, a)) continue;
       const p = Gal.armyPos(run, a), len = Math.max(1, Math.hypot(p.dx, p.dy));
       const ux = p.dx / len, uy = p.dy / len;
-      const n = U.clamp(Math.round((a.n + a.ships * 5) / 4) + 2, 3, 16);
+      const n = U.clamp(Math.round(S.rawPower(a.units) / 4) + 2, 3, 16);
       const col = Gal.fcol(run, a.owner), dark = Gal.fdark(run, a.owner);
       for (let i = 0; i < n; i++) {
         const back = i * 2.2 + Math.sin(time * 9 + i) * 0.6;
@@ -185,7 +180,6 @@
         ctx.fillStyle = PAL[0]; ctx.fillRect(x, y + 1, 1, 1);
         ctx.fillStyle = PAL[i === 0 ? 31 : i < 3 ? col : dark]; ctx.fillRect(x, y, 1, 1);
       }
-      if (a.mode === 'raid') { ctx.fillStyle = PAL[Math.floor(time * 6) % 2 ? 18 : 13]; ctx.fillRect(Math.round(p.x + ux * 2), Math.round(p.y + uy * 2), 1, 1); }
     }
     // stars
     for (const s of run.systems) {
@@ -194,7 +188,7 @@
       ctx.fillStyle = PAL[0]; ctx.fillRect(x - 2, y - 1, 5, 4);
       ctx.fillStyle = PAL[sc]; ctx.fillRect(x - 1, y, 3, 1); ctx.fillRect(x, y - 1, 1, 3);
       ctx.fillStyle = PAL[31]; ctx.fillRect(x, y, 1, 1);
-      if (s.battle) {   // battle flashes: hard pixels, no glow
+      if (run.t - s.lastBattle < 2.5) {   // battle flashes: hard pixels, no glow
         const k = Math.floor(time * 14 + s.id) % 4;
         ctx.fillStyle = PAL[[31, 14, 18, 17][k]];
         ctx.fillRect(x - 3 + ((s.id * 7 + k * 3) % 7), y - 3 + ((s.id + k * 5) % 7), 1, 1);
@@ -234,12 +228,11 @@
         ctx.drawImage(Gal.ficon(run, own), px + 2, py + 2);
         if (txt) TS(ctx, txt, px + 8, py + 2, k.exact ? (own === me ? 31 : 7) : 5);
       }
-      // status icons: under attack, building up, damaged
+      // status icons: attack inbound, just fought, cannons in orbit
       let ix = px + w + 1;
-      if (s.battle) { if (Math.floor(time * 4) % 2 === 0) ctx.drawImage(AS.Spr.icons.swords, ix, py + 2); ix += 6; }
-      if (k.exact && s.train.q > 0) { ctx.drawImage(AS.Spr.icons.up, ix, py + 2); ix += 6; }
-      if (k.exact && Gal.damaged(run, s)) { ctx.drawImage(AS.Spr.icons.wrench, ix, py + 2); ix += 6; }
-      if (k.exact && s.plat.n > 0 && s.plat.dur > 0 && G.cam.zr >= 2) { ctx.drawImage(AS.Spr.icons.shield, ix, py + 2); ix += 6; }
+      if (own === me && run.warnings.some(q => q.kind === 'inc' && q.sys === s.id)) { if (Math.floor(time * 4) % 2 === 0) ctx.drawImage(AS.Spr.icons.warn, ix, py + 2); ix += 6; }
+      if (run.t - s.lastBattle < 4) { if (Math.floor(time * 4) % 2 === 0) ctx.drawImage(AS.Spr.icons.swords, ix, py + 2); ix += 6; }
+      if (k.exact && s.gar.cannon > 0 && G.cam.zr >= 2) { ctx.drawImage(AS.Spr.icons.cannon, ix, py + 2); ix += 6; }
       // name
       const nc = own === me ? 13 : sel || hov ? 7 : 5;
       if (G.cam.zr >= 1) TS(ctx, s.name, x, y + 4, nc, 'center');
@@ -250,40 +243,15 @@
       }
       if (interactive) G.tip(px - 2, py - 2, w + 4, 20, Gal.tipFor(run, s));
     }
-    // army tags (strength) on visible armies
+    // army tags (power) on visible armies
     for (const a of run.armies) {
       if (!S.armyVisible(run, me, a)) continue;
       const p = Gal.armyPos(run, a), sp = G.toScreen(p.x, p.y);
-      const v = Math.round(S.stackStrength(run, a));
+      const v = Math.round(S.armyPower(run, a));
       const col = Gal.fcol(run, a.owner);
       const w = D.tw(String(v)) + 3;
       D.rect(ctx, Math.round(sp.x) - 1, Math.round(sp.y) - 9, w, 7, 0);
       TS(ctx, v, Math.round(sp.x), Math.round(sp.y) - 8, col);
-    }
-    // battle dice (visible battles only: the fight itself is public, the numbers are not)
-    const vis = S.visibility(run, me);
-    for (const b of run.battles) {
-      const s = run.systems[b.sys];
-      const dz = G.dice[b.sys];
-      if (!vis[s.id] || !dz) continue;
-      const p = G.toScreen(s.x, s.y);
-      const x = Math.round(p.x) + 12, y = Math.round(p.y) - 30;
-      if (x > G.W - 50 || y < top) continue;
-      const age = G.time - dz.at;
-      const roll = age < 0.25;
-      D.rect(ctx, x - 1, y - 1, 48, 22, 0);
-      D.frame(ctx, x - 2, y - 2, 48, 22, 1, 4);
-      const ac = Gal.fcol(run, b.att.owner), dc = Gal.fcol(run, s.owner);
-      for (let i = 0; i < 3; i++) {
-        AS.Spr.die(ctx, x + i * 8, y, roll ? 1 + Math.floor(Math.random() * 6) : dz.ad[i], ac, 0);
-        AS.Spr.die(ctx, x + i * 8, y + 10, roll ? 1 + Math.floor(Math.random() * 6) : dz.dd[i], dc, 0);
-      }
-      if (!roll) {
-        TS(ctx, '-' + dz.dl, x + 26, y + 11, dz.dl ? 17 : 5);
-        TS(ctx, '-' + dz.al, x + 26, y + 1, dz.al ? 17 : 5);
-      }
-      TS(ctx, Math.round(S.stackStrength(run, b.att)), x + 38, y + 1, ac, 'center');
-      TS(ctx, Math.round(S.defStrength(run, s)), x + 38, y + 11, dc, 'center');
     }
   };
 
@@ -291,7 +259,7 @@
     const k = Gal.known(run, s);
     const o = s.owner >= 0 ? run.factions[s.owner] : null;
     let t = s.name + ': ' + (o ? o.name + (o.id === 0 ? '' : ' (' + AS.PERS_NAMES[o.pers] + ')') : 'INDEPENDENT') + '. ';
-    t += k.exact ? 'DEFENCE ' + k.v + '. ' : 'SIZE BAND ' + k.text + ' (S UNDER 15, M UNDER 40, L 40+): TOO FAR TO SEE EXACT NUMBERS. ';
+    t += k.exact ? 'POWER ' + k.v + ' (' + AS.HUD.unitsText(s.gar) + '). ' : 'SIZE BAND ' + k.text + ' (S UNDER 15, M UNDER 40, L 40+): TOO FAR TO SEE EXACT NUMBERS. ';
     if (s.capital >= 0 && s.capital === s.owner) t += 'CAPITAL: TAKE IT TO ELIMINATE THEM. ';
     if (run.coalition && s.owner === run.coalition.target) t += 'COALITION TARGET. ';
     if (s.owner === 0) t += 'CLICK TO OPEN. DRAG TO A NEIGHBOUR TO MOVE OR ATTACK.';

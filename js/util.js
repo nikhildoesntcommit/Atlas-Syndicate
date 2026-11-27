@@ -1,4 +1,4 @@
-/* ATLAS SYNDICATE v6 — util.js
+/* ATLAS SYNDICATE v7 — util.js
    Seeded PRNG with serialisable state, maths helpers, formatting, guarded storage. */
 (function (AS) {
   'use strict';
@@ -85,7 +85,7 @@
   /* ---------- storage: every access guarded, memory fallback ---------- */
   const Store = AS.Store = {
     mem: {},
-    prefix: 'atlas6.',
+    prefix: 'atlas7.',
     get(key, def) {
       key = this.prefix + key;
       let raw = null;

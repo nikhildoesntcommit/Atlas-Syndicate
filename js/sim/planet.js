@@ -1,7 +1,7 @@
-/* ATLAS SYNDICATE v6 — sim/planet.js
+/* ATLAS SYNDICATE v7 — sim/planet.js
    The planet cross-section (Turmoil-style, but nothing is hidden): a strip of surface building slots
    above a grid of layered rock. Hardness 0-2 makes drilling dearer; 3 is a barrier that cannot be
-   drilled. Deposits of fuel, ice, metal and gold sit at visible depths; deeper ones are richer.
+   drilled. Deposits of crude, ice and gold sit at visible depths; deeper ones are richer.
    Also: drill pricing and validation, and the cheapest drill route (used by the AI and by hints). */
 (function (AS) {
   'use strict';
@@ -13,8 +13,8 @@
   const idx = (x, y) => y * GW + x;
   S.cellXY = i => [i % GW, Math.floor(i / GW)];
 
-  /** How many surface slots a planet has (survey upgrade adds one). */
-  S.slotCount = (p, f) => p.slots + (f && f.up && f.up.ext >= 5 ? 1 : 0);
+  /** How many surface slots a planet has. */
+  S.slotCount = p => p.slots;
   /** Column of the shaft under surface slot i. */
   S.slotX = (p, i, f) => { const n = S.slotCount(p, f); return Math.min(GW - 1, Math.floor((i + 0.5) * GW / n)); };
 
@@ -100,8 +100,8 @@
   };
 
   /* planet look, slots and deposit mix by planet type */
-  const KIND_RES = { rust: 'metal', cinder: 'metal', dwarf: 'gold', terran: 'gold', ice: 'ice', ice2: 'ice', gas: 'fuel' };
-  S.kindRes = k => KIND_RES[k] || 'metal';
+  const KIND_RES = { rust: 'gold', cinder: 'fuel', dwarf: 'gold', terran: 'ice', ice: 'ice', ice2: 'ice', gas: 'fuel' };
+  S.kindRes = k => KIND_RES[k] || 'gold';
   /** Random planet for a neutral system. Big planets get many slots and few deposits; small ones the reverse. */
   S.makePlanet = function (rng, i, count, rich) {
     const kinds = ['rust', 'cinder', 'dwarf', 'terran', 'ice', 'ice2', 'gas'];
@@ -112,9 +112,8 @@
     const nDeps = [5, 4, 3][cls] + (rich ? 1 : 0) - (rng() < 0.4 ? 1 : 0);
     const deps = [];
     for (let k = 0; k < nDeps; k++) {
-      let res = k === 0 || rng() < 0.45 ? main : AS.RES_KEYS[Math.floor(rng() * 4)];
-      if (res === 'gold' && main !== 'gold' && rng() < 0.4) res = 'metal';
-      deps.push(res === 'gold' ? ['gold', 7, 14, 3, 6] : [res, 1 + Math.floor(rng() * 4), 6 + Math.floor(rng() * 8), 5, 11 + (rich ? 3 : 0)]);
+      const res = k === 0 || rng() < 0.45 ? main : AS.RES_KEYS[Math.floor(rng() * AS.RES_KEYS.length)];
+      deps.push(res === 'gold' ? ['gold', 5 + Math.floor(rng() * 4), 10 + Math.floor(rng() * 5), 3, 6 + (rich ? 2 : 0)] : [res, 1 + Math.floor(rng() * 4), 6 + Math.floor(rng() * 8), 5, 11 + (rich ? 3 : 0)]);
     }
     const g = S.genGround(rng, { slots, deps });
     return finishPlanet(rng, kind, i, count, g, cls);
@@ -126,12 +125,14 @@
       slots: g.slots, rock: g.rock, deposits: g.deposits, blds: [], portIn: {},
     };
   }
-  /** Every home system is the same four planets, so no start is better than another. */
+  /** Every home system is the same four planets, so no start is better than another.
+   *  Planet I has gold and ice close to the surface (the tutorial's first chains); the terran planet
+   *  grows food 50% better; the gas giant holds the crude. */
   S.HOME_SPEC = [
-    { kind: 'rust',  cls: 0, slots: 5, barriers: 1, deps: [['metal', 2, 4, 8, 10], ['gold', 7, 9, 4, 5], ['ice', 3, 5, 6, 8], ['metal', 11, 13, 9, 11]] },
-    { kind: 'ice',   cls: 2, slots: 8, barriers: 1, deps: [['ice', 3, 6, 8, 10], ['fuel', 6, 9, 6, 8]] },
-    { kind: 'gas',   cls: 1, slots: 6, barriers: 2, deps: [['fuel', 2, 5, 8, 10], ['fuel', 9, 12, 8, 10], ['metal', 6, 9, 6, 8]] },
-    { kind: 'dwarf', cls: 1, slots: 6, barriers: 2, deps: [['gold', 9, 12, 4, 6], ['metal', 3, 6, 7, 9], ['gold', 12, 14, 3, 5]] },
+    { kind: 'rust',   cls: 0, slots: 6, barriers: 1, deps: [['gold', 2, 4, 5, 7], ['ice', 3, 5, 6, 8], ['gold', 8, 11, 4, 6], ['ice', 11, 13, 7, 9]] },
+    { kind: 'terran', cls: 1, slots: 7, barriers: 1, deps: [['ice', 3, 6, 8, 10], ['gold', 7, 10, 4, 6]] },
+    { kind: 'gas',    cls: 1, slots: 6, barriers: 2, deps: [['fuel', 2, 5, 8, 10], ['fuel', 9, 12, 8, 10], ['gold', 6, 9, 4, 6]] },
+    { kind: 'ice',    cls: 2, slots: 8, barriers: 2, deps: [['ice', 3, 6, 8, 10], ['fuel', 7, 10, 6, 8], ['gold', 11, 14, 3, 5]] },
   ];
   S.makeHomePlanets = function (seedForAllHomes) {
     const rng = U.rng(seedForAllHomes >>> 0);
@@ -155,7 +156,7 @@
   S.drillPrice = function (f, p, path) {
     let c = 0;
     for (const i of path) c += C.ground.hardCost[S.rockAt(p, i)] || 99;
-    return Math.ceil(c * C.ground.drillCost * (f && f.up && f.up.ext >= 1 ? 0.7 : 1));
+    return Math.ceil(c * C.ground.drillCost);
   };
   /** Checks a drill path: starts under the slot, steps one cell at a time, never repeats, never hits a
    *  barrier, and ends in a deposit of the extractor's resource. Returns {ok, reason, cost, dep}. */

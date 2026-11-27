@@ -1,4 +1,4 @@
-/* ATLAS SYNDICATE v6 — render/sprites.js
+/* ATLAS SYNDICATE v7 — render/sprites.js
    All pixel art, generated in code (unchanged v4 generators): painter helpers, facility art, freighters,
    icons, the star, and planets that rotate under a moving day/night terminator. v5 adds faction icons
    and map status badges in the same style. */
@@ -136,6 +136,21 @@
       for (let y = 20; y <= 22; y += 2) { P.px(4, y, 14); P.px(7, y, 2); P.px(24, y - 2, 14); P.px(27, y, 14); }
       P.r(16, 0, 1, 3, 6);
     },
+    tank(P) {
+      drawPad(P); cylinder(P, 3, 9, 11, 17, [23, 24, 25, 26]); cylinder(P, 17, 14, 11, 12, [23, 24, 25, 26]);
+      P.r(3, 14, 11, 1, 26); P.r(3, 20, 11, 1, 24); P.r(17, 19, 11, 1, 26);
+      P.r(14, 22, 3, 2, 5); P.r(14, 22, 3, 1, 6); P.r(8, 4, 1, 5, 6); P.r(7, 3, 3, 1, 5);
+      for (let y = 11; y < 25; y += 3) P.px(5, y, 31);
+      P.d(19, 21, 7, 4, 26, 6);
+    },
+    barn(P) {
+      drawPad(P); obox(P, 4, 15, 24, 2, 10, BRICK);
+      for (let y = 5; y <= 15; y++) { const hw = Math.round((y - 5) * 1.25); P.r(16 - hw, y, hw * 2, 1, y & 1 ? 9 : 10); }
+      P.line(16, 5, 3, 16, 31); P.line(16, 5, 29, 16, 31);
+      P.r(12, 19, 8, 8, 8); P.line(12, 19, 19, 26, 31); P.line(19, 19, 12, 26, 31); P.r(12, 19, 8, 1, 31);
+      P.r(6, 19, 3, 3, 14); P.r(23, 19, 3, 3, 14);
+      P.r(27, 22, 4, 5, 29); P.r(27, 22, 4, 1, 30);
+    },
     depot(P) {
       drawPad(P); P.r(3, 6, 2, 21, 12); P.r(27, 6, 2, 21, 12); for (let y = 7; y < 26; y += 3) { P.px(3, y, 0); P.px(28, y, 0); }
       obox(P, 2, 3, 28, 2, 2, { top: 13, front: 12, hi: 14, lo: 11 }); for (let x = 3; x < 30; x += 2) P.px(x, 5, 0);
@@ -152,6 +167,8 @@
     alloy:   ['.....', '.777.', '66666', '55555', '.....'],
     food:    ['.m.m.', 'mmmmm', 'mlllm', 'mlllm', '.mmm.'],
     credits: ['.ddd.', 'dcddd', 'dcdde', 'ddddb', '.bbb.'],
+    money:   ['.....', 'vvvvv', 'vmlmv', 'vvvvv', '.....'],
+    water:   ['..q..', '.qqq.', 'qqqvq', 'qqqqq', '.ppp.'],
   };
   /* faction icons (5x5, drawn in the faction colour) and map badges */
   const FICON = {
@@ -167,7 +184,6 @@
     coin: ['.ddd.', 'dcddd', 'dcdde', 'ddddb', '.bbb.'],
     clock: ['.666.', '6.7.6', '6.776', '6...6', '.666.'],
     board: ['77777', '7...7', '7d.d7', '7...7', '77777'],
-    ship: ['.33...', '334566', '.33...'],
     warn: ['..d..', '.d0d.', '.d0d.', 'ddddd', '.....'],
     lock: ['.666.', '6...6', 'ddddd', 'dd0dd', 'ddddd'],
     star: ['..d..', '.ddd.', 'ddddd', '.d.d.', '.....'],
@@ -175,9 +191,11 @@
     up: ['..m..', '.mmm.', 'm.m.m', '..m..', '..m..'],
     wrench: ['.i..i', '.iiii', '.i...', 'i....', 'i....'],
     shield: ['mmmmm', 'mlllm', 'mlllm', '.mlm.', '..m..'],
-    soldier: ['.7.', '777', '.7.', '7.7'],
-    ship: ['.6..', '6666', '.6..'],
-    plat: ['6.6', '.6.', '6.6'],
+    worker: ['.7.', '777', '.7.', '7.7'],
+    ship: ['.....', '..7..', '.676.', '7.6.7', '.....'],
+    destroyer: ['.....', '6....', '67776', '.6666', '.....'],
+    cannon: ['....d', '...d.', '.66..', '6666.', '66666'],
+    power: ['..dd.', '.dd..', 'ddddd', '..dd.', '.dd..'],
   };
 
   /* freighter hull (faces right); pods are painted per frame in rows 2-4, x 4..11 */

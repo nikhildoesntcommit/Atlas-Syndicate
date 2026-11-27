@@ -1,8 +1,8 @@
-/* ATLAS SYNDICATE v6 — tests/average-player.js
+/* ATLAS SYNDICATE v7 — tests/average-player.js
    A deliberately simple scripted "average player" for the player-slot test. Not the game AI: no utility
    scoring, no staging, no odds search beyond what the order panel shows. On a planet it does what the
-   tutorial teaches: an extractor, a drill to the nearest matching deposit, a processor next to it,
-   a conveyor; when a planet is full it routes ice or fuel through a pathway to the next planet.
+   tutorial teaches: a gold mine drilled to gold (sold every few seconds), an ice drill and water plant,
+   a greenhouse, a fuel chain; when a planet is full it routes ice or crude through a pathway.
    One decision every 5 seconds, using only what the HUD shows. Never touches run.rng (replayable). */
 (function (AS) {
   'use strict';
@@ -27,8 +27,14 @@
       for (const sl of fr) { drill = S.bestDrill(run, f, p, sl, dep); if (drill) { at = sl; break; } }
       if (!drill) continue;
       fr.splice(fr.indexOf(at), 1); fr.unshift(at);
-      const need = AS.BLD[R.ext].cost[0] + drill.cost + AS.BLD[R.proc].cost[0] + 30 + (fr.length < 2 ? AS.COSTS.pathway[0] : 0);
-      if (f.credits < need || f.alloy < AS.BLD[R.ext].cost[1] + AS.BLD[R.proc].cost[1] + 10 + (fr.length < 2 ? AS.COSTS.pathway[1] : 0)) return false;
+      if (!R.proc) {   // gold: one building and a drill
+        if (f.money < AS.BLD[R.ext].cost + drill.cost + 20) return false;
+        const e = act(run, 'build', { sys: s.id, planet: pi, slot: fr[0], kind: R.ext }); if (!e.ok) return false;
+        act(run, 'drill', { sys: s.id, planet: pi, bld: e.bld.id, path: drill.path });
+        return true;
+      }
+      const need = AS.BLD[R.ext].cost + drill.cost + AS.BLD[R.proc].cost + 30 + (fr.length < 2 ? AS.COSTS.pathway : 0);
+      if (f.money < need) return false;
       if (fr.length >= 2) {
         const e = act(run, 'build', { sys: s.id, planet: pi, slot: fr[0], kind: R.ext }); if (!e.ok) return false;
         act(run, 'drill', { sys: s.id, planet: pi, bld: e.bld.id, path: drill.path });
@@ -52,6 +58,10 @@
     }
     return false;
   }
+  function buildFarm(run, f, s) {
+    for (let pi = 0; pi < s.planets.length; pi++) { const fr = free(f, s.planets[pi]); if (fr.length && f.money > 90) return act(run, 'build', { sys: s.id, planet: pi, slot: fr[0], kind: f.money > 400 ? 'livestock' : 'greenhouse' }).ok; }
+    return false;
+  }
 
   Bot.step = function (run, b) {
     if (run.over || run.t < b.next) return;
@@ -59,81 +69,71 @@
     const f = run.factions[0];
     if (!f.alive) return;
     const own = S.ownSystems(run, 0);
-    const fc = S.forecast(run, f);
+    let fc = S.forecast(run, f);
+    // the market: sell the gold; top up food or fuel when the top bar says they run out
+    if (f.gold >= 1) act(run, 'trade', { res: 'gold', qty: -Math.floor(f.gold) });
+    if (fc.food.net < 0 && f.food < -fc.food.net * 2 && f.money > 60) act(run, 'trade', { res: 'food', qty: Math.min(50, Math.ceil(-fc.food.net * 4)) });
+    if (f.fuelEff < 1 && f.money > 60) act(run, 'trade', { res: 'fuel', qty: Math.min(50, Math.ceil(fc.fuelNeed * 3) + 1) });
     // economy: the tutorial order at home, then the same in every system; extra chains for whatever runs short
-    const want = ['metal', 'gold', 'ice', 'fuel'];
-    if (fc.food.net < 0) want.unshift('ice');
-    if (fc.credits.net < 10) want.unshift('gold');
     for (const s of own) {
-      if (s.battle) continue;
       const have = r => s.planets.some(p => p.blds.some(x => x.kind === AS.RES[r].ext && x.drill && p.deposits[x.drill.dep].amount > 0));
-      // a shortfall warning on the top bar means: build another chain of that resource
-      const short = { ice: fc.food.net < 0.3, gold: fc.credits.net < 10, fuel: fc.fuel.net < 0 && f.fuel < 80, metal: f.alloy < 40 };
-      for (const r of want) if ((!have(r) || (short[r] && s === own[0])) && buildChain(run, f, s, r)) break;
-      if (S.repairList(run, s).some(r => r.dur <= 0) && f.credits > 150) act(run, 'repair', { sys: s.id, kind: 'all' });
+      fc = S.forecast(run, f);
+      if (!have('gold') && buildChain(run, f, s, 'gold')) break;
+      if (fc.food.net < 0.5 && fc.water.in - fc.water.out >= 1.5 && buildFarm(run, f, s)) break;
+      if ((!have('ice') || (fc.food.net < 0.5 && fc.water.in - fc.water.out < 1.5)) && buildChain(run, f, s, 'ice')) break;
+      if (S.militaryPower(run, 0) > 0 && (!have('fuel') || fc.fuel.net < 0) && buildChain(run, f, s, 'fuel')) break;
     }
     let saving = false;
     {   // grow: buy a free neighbour as soon as there is money for it (sooner while the map is still open)
       let cheap = null;
-      for (const s of own) for (const n of S.neighbours(run, s.id)) { const x = run.systems[n]; if (x.owner === -1 && !x.battle) { const pr = S.buyPrice(run, f, x); if (!cheap || pr < cheap[1]) cheap = [x, pr]; } }
-      if (cheap && f.credits > cheap[1] + (own.length < 4 ? 20 : 250)) act(run, 'buy', { sys: cheap[0].id });
+      for (const s of own) for (const n of S.neighbours(run, s.id)) { const x = run.systems[n]; if (x.owner === -1) { const pr = S.buyPrice(run, f, x); if (!cheap || pr < cheap[1]) cheap = [x, pr]; } }
+      if (cheap && f.money > cheap[1] + (own.length < 4 ? 20 : 250)) act(run, 'buy', { sys: cheap[0].id });
       else if (cheap && own.length < 4 && run.t > 100) saving = true;   // saving up for it
     }
-    // spare money goes into more gold (credits) first, then metal: the tutorial's two chains, repeated
-    let extra = 0;
-    if (f.credits > 260 && !saving) for (const s of own) { if (buildChain(run, f, s, 'gold') || (f.alloy < 120 && buildChain(run, f, s, 'metal')) || (fc.food.net < 1 && buildChain(run, f, s, 'ice'))) { if (++extra >= 2) break; } }
-    // the shop: buy the cheapest next upgrade when rich
-    if (f.credits > 550 && !saving) { const t = AS.UPG_TRACKS.slice().sort((a, c) => f.up[a] - f.up[c])[0]; act(run, 'upgrade', { track: t }); }
-    // spare alloy: warships on the border, a platform or two at the capital (what the build buttons offer)
-    if (f.alloy > 140 && f.credits > 200 && !saving) {
-      const cap = run.systems[f.capital];
-      const border = own.filter(s => S.neighbours(run, s.id).some(n => run.systems[n].owner > 0)).sort((a, c) => a.gar.n - c.gar.n)[0] || cap;
-      if (cap.plat.n < 2) act(run, 'plat', { sys: cap.id });
-      else if (fc.fuel.net > 0 || f.fuel > 100) act(run, 'ship', { sys: border.id });
+    // spare money goes into more gold first (money), then an upgrade on the best gold mine
+    if (f.money > 260 && !saving) for (const s of own) if (buildChain(run, f, s, 'gold')) break;
+    if (f.money > 400 && !saving) {
+      outer: for (const s of own) for (let pi = 0; pi < s.planets.length; pi++) for (const x of s.planets[pi].blds) if (x.kind === 'goldmine' && x.drill && x.lvl < 3 && f.money > AS.upgPrice(x.kind, x.lvl) + 200) { act(run, 'upgrade', { sys: s.id, planet: pi, bld: x.id }); break outer; }
     }
-    // army: salaries near half of income, as long as food keeps up
-    const soldiers = S.soldiers(run, 0) + own.reduce((a, s) => a + s.train.q, 0);
-    const armyGoal = 10 + 8 * own.length + run.t / 60 + Math.max(0, f.credits - 500) / 25;   // and with money in the bank   // grows with the empire, not ahead of it
-    if (run.t > C.game.protect - 40 && soldiers < armyGoal && S.salaryFor(run, f, soldiers + 5) < fc.credits.in * 0.6 && fc.credits.net > 0 && (fc.food.net > -0.5 || f.food > 40)) {
-      const border = own.filter(s => S.neighbours(run, s.id).some(n => run.systems[n].owner !== 0));
-      const at = (border.length ? border : own)[Math.floor(b.rng() * (border.length || own.length))];
-      act(run, 'recruit', { sys: at.id, n: f.credits > 1500 ? 15 : 5 });
+    // military: before attacks open, and then keep about a third of spare money in units at the border
+    const border = own.filter(s => S.neighbours(run, s.id).some(n => run.systems[n].owner !== 0));
+    const at = (border.length ? border : own).slice().sort((a, c) => S.sysPower(run, a) - S.sysPower(run, c))[0];
+    const goal = 20 + 10 * own.length + run.t / 20;
+    if (run.t > C.game.protect - 90 && S.militaryPower(run, 0) < goal && f.money > 120 && !saving) {
+      const kind = fc.fuel.net > 0.3 || f.fuel > 60 ? 'cannon' : 'destroyer';
+      const n = Math.max(1, Math.min(10, Math.floor((f.money - 60) * 0.4 / S.unitCost(run, kind))));
+      act(run, 'units', { sys: at.id, kind, n });
     }
-    // defend: react to warnings by pulling troops from the safest system
+    // defend: react to warnings by moving power from the safest system and buying more at the target
     for (const w of run.warnings) {
       if (w.kind !== 'mass' && w.kind !== 'inc') continue;
       const target = run.systems[w.kind === 'mass' ? w.target : w.sys];
       if (!target || target.owner !== 0) continue;
-      const donor = own.filter(s => s !== target && !s.battle && s.capital !== 0 && s.gar.n > 8 && !S.neighbours(run, s.id).some(n => run.systems[n].owner > 0)).sort((a, c) => c.gar.n - a.gar.n)[0];
+      const donor = own.filter(s => s !== target && s.capital !== 0 && S.sysPower(run, s) > 10 && !S.neighbours(run, s.id).some(n => run.systems[n].owner > 0)).sort((a, c) => S.sysPower(run, c) - S.sysPower(run, a))[0];
       if (donor) act(run, 'move', { from: donor.id, to: target.id, frac: 0.6 });
-      if (f.credits > 260 && f.alloy > 60 && target.plat.n < 3) act(run, 'plat', { sys: target.id });
+      if (f.money > 150) act(run, 'units', { sys: target.id, kind: 'destroyer', n: Math.min(10, Math.floor((f.money - 50) / 2 / S.unitCost(run, 'destroyer'))) || 1 });
       break;
     }
-    // spend spare money: buy a cheap independent neighbour
-    // expand: attack the easiest neighbour when the shown odds are good (rival capitals at a little less)
+    // expand: attack the easiest neighbour when the order panel shows a clear win (rival capitals at a little less)
     if (run.t >= C.game.protect && run.t - b.lastAttack > 12) {
       let best = null;
       for (const s of own) {
-        if (s.battle || s.gar.n < 7) continue;
+        const mine = S.sysPower(run, s);
+        if (mine < 8) continue;
         for (const n of S.neighbours(run, s.id)) {
           const x = run.systems[n];
-          if (x.owner === 0 || x.battle || (x.owner > 0 && S.truceBlocks(run, 0, x.owner))) continue;
+          if (x.owner === 0 || (x.owner > 0 && S.truceBlocks(run, 0, x.owner))) continue;
           const rivalNext = S.neighbours(run, s.id).some(m => run.systems[m].owner > 0);
-          const keep = Math.min(s.gar.n - 1, s.capital === 0 ? (rivalNext ? 12 : 5) : rivalNext ? 6 : 2);
-          const frac = (s.gar.n - keep) / s.gar.n;
-          const st = { owner: 0, n: Math.round(s.gar.n * frac), vet: s.gar.vet, ships: s.gar.ships, sdur: s.gar.sdur };
-          const o = S.odds(run, st, x, 'attack');
+          const keep = Math.min(mine * 0.6, s.capital === 0 ? (rivalNext ? 30 : 10) : rivalNext ? 12 : 3);
+          const frac = (mine - keep) / mine;
+          const send = S.rawPower(S.splitUnits(s.gar, frac)) * f.fuelEff;
+          const o = S.outcome(run, send, x);
           const cap = x.owner > 0 && x.capital === x.owner;
-          const need = cap ? 0.6 : x.owner < 0 ? 0.7 : 0.78;
-          const score = o.p + (cap ? 1 : 0);
-          if (o.p >= need && (!best || score > best.score)) best = { from: s.id, to: n, frac, score };
+          const margin = cap ? 1.1 : x.owner < 0 ? 1.2 : 1.35;
+          if (send >= o.def * margin + 2 && (!best || (cap ? 1 : 0) + send / Math.max(1, o.def) > best.score)) best = { from: s.id, to: n, frac, score: (cap ? 1 : 0) + send / Math.max(1, o.def) };
         }
       }
       if (best && act(run, 'move', { from: best.from, to: best.to, frac: best.frac }).ok) b.lastAttack = run.t;
-    }
-    for (const bt of run.battles) if (bt.att.owner === 0 && bt.rounds >= 2) {
-      const o = S.oddsRaw(S.stackStrength(run, bt.att), S.defStrength(run, run.systems[bt.sys]), bt.att.mode);
-      if (o.p < 0.25) act(run, 'retreat', { battle: bt.id });
     }
   };
 })(globalThis.AS = globalThis.AS || {});

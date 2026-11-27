@@ -1,4 +1,4 @@
-/* ATLAS SYNDICATE v6 — sim/sim.js
+/* ATLAS SYNDICATE v7 — sim/sim.js
    The run: creation, fair setup, the fixed-step update, fog of war, threat and shortage warnings,
    coalitions against a leader, win and loss, history for the end report, save/load, hashing and
    invariant checks. Pure simulation: no DOM, runs identically in the browser and in Node. */
@@ -11,12 +11,13 @@
     const st = C.econ.start;
     return {
       id: i, name: def.name, short: def.short, pers, col: def.col, dark: def.dark, deep: def.deep, icon: def.icon,
-      credits: st.credits, alloy: st.alloy, fuel: st.fuel, food: st.food, up: { ext: 0, proc: 0, log: 0, mil: 0 },
-      alive: true, capital: -1, mods: null, autoRepair: pers === 'player', broke: 0, hungry: 0, noFuel: false,
-      lastWin: -999, lastDefeat: -999, outAt: 0, outBy: -1, lastCycle: { income: 0, salary: 0, got: null },
-      stats: { income: 0, salary: 0, repairs: 0, spent: 0, lost: 0, killed: 0, captured: 0, systemsLost: 0, defended: 0, failed: 0, attacks: 0,
-        attacked: 0, raids: 0, loot: 0, retreats: 0, bought: 0, deserted: 0, eliminated: 0, peakSystems: 1, peakArmy: 0,
-        alloyMade: 0, fuelMade: 0, foodMade: 0, fuelUsed: 0, foodUsed: 0, alloyUsed: 0, coalitions: 0 },
+      money: st.money, gold: st.gold, water: st.water, food: st.food, fuel: st.fuel,
+      fuelEff: 1, fuelNeed: 0, farmFrac: 1, hungry: 0,
+      alive: true, capital: -1, mods: null,
+      lastWin: -999, lastDefeat: -999, outAt: 0, outBy: -1, lastCycle: { income: 0, got: null },
+      stats: { income: 0, sold: 0, spent: 0, military: 0, upgrades: 0, lost: 0, killed: 0, captured: 0, systemsLost: 0, defended: 0, failed: 0, attacks: 0,
+        attacked: 0, bought: 0, eliminated: 0, peakSystems: 1, peakPower: 0, starved: 0,
+        goldMade: 0, waterMade: 0, foodMade: 0, fuelMade: 0, fuelUsed: 0, foodUsed: 0, waterUsed: 0, coalitions: 0 },
       ai: null,
     };
   }
@@ -28,7 +29,7 @@
     seed = (seed >>> 0) || 1;
     const run = {
       v: AS.SAVE_VERSION, seed, diff: AS.DIFFICULTY[opts.diff] ? opts.diff : 'normal', rs: { a: (seed * 2654435761) >>> 0 }, t: 0, steps: 0, nextId: 1,
-      cycleT: 0, cycleN: 0, phase: 'setup', systems: [], lanes: [], factions: [], armies: [], battles: [],
+      cycleT: 0, cycleN: 0, phase: 'setup', systems: [], lanes: [], factions: [], armies: [],
       hist: [], log: [], battleLog: [], fx: [], warnings: [], warnHist: [], watch: {}, over: false, winner: -1, overReason: '', started: false,
       slot0: opts.slot0 || null, noCoalition: !!opts.noCoalition, endOnPlayerLoss: opts.endOnPlayerLoss !== undefined ? !!opts.endOnPlayerLoss : !opts.slot0,
       coalition: null, coalitionCool: 0, coalitions: [],
@@ -47,8 +48,8 @@
     sys.planets = JSON.parse(JSON.stringify(planets));
     sys.planets.forEach((p, i) => { p.name = sys.name + ' ' + AS.PLANET_SUFFIX[i]; p.phase = sys.id * 0.7 + i * 2.4; });
     sys.owner = fid; sys.capital = fid; sys.pathways = [];
-    sys.gar = { n: C.army.startSoldiers, vet: C.army.startVet, ships: 0, sdur: 100 };
-    sys.plat = { n: C.army.startPlatforms, dur: 100 }; sys.train = { q: 0, prog: 0 }; sys.pop = 5;
+    sys.gar = { ship: 0, destroyer: 0, cannon: 0 };   // everyone starts with no military at all
+    sys.workers = 0;
     run.factions[fid].capital = sys.id;
   };
   /** Homes: the six arm tips, all the same distance from rivals and the core; the player picks one. */
@@ -131,7 +132,7 @@
     for (const s of run.systems) {
       if (!vis[s.id] || s.owner === fid) continue;
       const w = run.watch[s.id] = run.watch[s.id] || [];
-      const v = Math.round(S.garStrength(run, s));
+      const v = Math.round(S.sysPower(run, s));
       w.push([run.t, v, s.owner]);
       while (w.length && w[0][0] < run.t - 40) w.shift();
       if (s.owner < 0) continue;
@@ -139,36 +140,39 @@
       if (!mine.length) continue;
       let lo = v;
       for (const r of w) if (r[2] === s.owner) lo = Math.min(lo, r[1]);
-      const target = mine.reduce((b, n) => (S.defStrength(run, run.systems[n]) < S.defStrength(run, run.systems[b]) ? n : b), mine[0]);
-      const tdef = S.defStrength(run, run.systems[target]);
+      const target = mine.reduce((b, n) => (S.sysPower(run, run.systems[n]) < S.sysPower(run, run.systems[b]) ? n : b), mine[0]);
+      const tdef = S.sysPower(run, run.systems[target]);
       const old = prev.find(x => x.kind === 'mass' && x.sys === s.id && x.owner === s.owner);
-      const on = v >= 14 && v >= tdef * 0.9 && (v - lo >= Math.max(8, lo * 0.3) || v >= tdef * 1.15);
+      const on = v >= 14 && v > tdef * 0.9 && (v - lo >= Math.max(8, lo * 0.3) || v > tdef * 1.15);
       if (on || (old && run.t - old.last < 20)) {
         const o = run.factions[s.owner];
-        const wr = old || { kind: 'mass', sys: s.id, owner: s.owner, target, t0: run.t, last: run.t, text: AS.PERS_NAMES[o.pers] + ' FORCES GATHERING AT ' + s.name };
+        const wr = old || { kind: 'mass', sys: s.id, owner: s.owner, target, t0: run.t, last: run.t };
+        wr.text = AS.PERS_NAMES[o.pers] + ' MASSING ' + v + ' POWER AT ' + s.name + ' (YOU HAVE ' + Math.round(tdef) + ' AT ' + run.systems[wr.target].name + ')';
         if (on) { wr.last = run.t; wr.target = target; }
         out.push(wr);
         if (!old) { run.fx.push({ type: 'warn', sys: s.id, owner: s.owner, kind: 'mass', fid }); run.warnHist.push({ kind: 'mass', owner: s.owner, sys: s.id, t0: Math.round(run.t) }); }
       }
     }
     for (const a of run.armies) {
-      if (a.owner === fid || a.mode === 'move' || a.mode === 'return' || !S.armyVisible(run, fid, a)) continue;
+      if (a.owner === fid || a.mode !== 'attack' || !S.armyVisible(run, fid, a)) continue;
       const dest = run.systems[a.dest];
       if (!dest || dest.owner !== fid) continue;
       const o = run.factions[a.owner];
       const old = prev.find(x => x.kind === 'inc' && x.army === a.id);
-      out.push(old || { kind: 'inc', army: a.id, sys: a.dest, owner: a.owner, t0: run.t, text: AS.PERS_NAMES[o.pers] + (a.mode === 'raid' ? ' RAID' : ' ATTACK') + ' INBOUND: ' + dest.name });
+      const wr = old || { kind: 'inc', army: a.id, sys: a.dest, owner: a.owner, t0: run.t };
+      const ap = Math.round(S.armyPower(run, a)), dp = Math.round(S.sysPower(run, dest));
+      wr.text = AS.PERS_NAMES[o.pers] + ' ATTACK INBOUND: ' + ap + ' VS YOUR ' + dp + ' AT ' + dest.name + (ap > dp ? ' - REINFORCE!' : '');
+      out.push(wr);
       if (!old) { run.fx.push({ type: 'warn', sys: a.dest, owner: a.owner, kind: 'inc', fid }); run.warnHist.push({ kind: 'inc', owner: a.owner, sys: a.dest, t0: Math.round(run.t) }); }
     }
-    for (const b of run.battles) { const s = run.systems[b.sys]; if (s.owner === fid) out.push({ kind: 'fight', sys: s.id, owner: b.att.owner, t0: b.t0, text: s.name + ' UNDER ATTACK' }); }
     const f = run.factions[fid];
     if (f.alive) {
       const fc = S.forecast(run, f);
+      const what = { food: ': WORKERS WILL STARVE', fuel: ': YOUR MILITARY WEAKENS', water: ': FARMS STOP' };
       for (const w of fc.warn) out.push({ kind: 'short', res: w.res, sys: f.capital, owner: fid, t0: run.t,
-        text: (w.res === 'credits' ? 'CREDITS' : AS.STOCK[w.res].name) + (w.cycles <= 0 ? ' RUN OUT NEXT CYCLE' : ' RUN OUT IN ' + w.cycles + ' CYCLES') + ({ credits: ': SOLDIERS DESERT', food: ': SOLDIERS GO HUNGRY', fuel: ': ARMIES STOP', alloy: '' }[w.res] || '') });
-      if (f.broke > 0) out.push({ kind: 'broke', sys: f.capital, owner: fid, t0: run.t, text: 'BANKRUPT: SOLDIERS DESERT NEXT CYCLE' });
-      if (f.hungry > 0) out.push({ kind: 'broke', sys: f.capital, owner: fid, t0: run.t, text: 'NO FOOD: SOLDIERS FIGHT AT 75%' });
-      if (f.noFuel) out.push({ kind: 'broke', sys: f.capital, owner: fid, t0: run.t, text: 'NO FUEL: ARMIES CANNOT MOVE' });
+        text: AS.STOCK[w.res].name + (w.cycles <= 0 ? ' RUNS OUT NEXT CYCLE' : ' RUNS OUT IN ' + w.cycles + ' CYCLES') + (what[w.res] || '') });
+      if (f.hungry > 0) out.push({ kind: 'broke', res: 'food', sys: f.capital, owner: fid, t0: run.t, text: 'NO FOOD: WORKERS ARE STARVING, MACHINES STOP' });
+      if (f.fuelEff < 0.999) out.push({ kind: 'broke', res: 'fuel', sys: f.capital, owner: fid, t0: run.t, text: 'LOW FUEL: MILITARY AT ' + Math.round(f.fuelEff * 100) + '% POWER' });
     }
     run.warnings = out;
     while (run.warnHist.length && run.warnHist[0].t0 < run.t - 120) run.warnHist.shift();
@@ -176,7 +180,7 @@
 
   /* ---------- end of game ---------- */
   S.standings = function (run) {
-    return run.factions.map(f => ({ id: f.id, systems: S.ownCount(run, f.id), army: S.soldiers(run, f.id), alive: f.alive }))
+    return run.factions.map(f => ({ id: f.id, systems: S.ownCount(run, f.id), army: Math.round(S.militaryPower(run, f.id)), alive: f.alive }))
       .sort((a, b) => b.systems - a.systems || b.army - a.army || a.id - b.id);
   };
   function finish(run, winner, reason, how) {
@@ -197,7 +201,7 @@
   }
   S.snapshot = function (run) {
     const p = run.factions[0];
-    run.hist.push([Math.round(run.t), ...run.factions.map(f => S.ownCount(run, f.id)), p.lastCycle.income, S.soldiers(run, 0), Math.round(p.credits), Math.round(p.alloy), Math.round(p.fuel), Math.round(p.food)]);
+    run.hist.push([Math.round(run.t), ...run.factions.map(f => S.ownCount(run, f.id)), Math.round(p.money), Math.round(S.militaryPower(run, 0)), Math.round(p.money), Math.round(p.gold), Math.round(p.fuel), Math.round(p.food)]);
   };
   S.logMoment = function (run, text, k, f, decisive) {
     run.log.push({ t: Math.round(run.t), text: String(text).toUpperCase(), k: k || 'info', f: f === undefined ? -1 : f, d: !!decisive });
@@ -208,13 +212,11 @@
   S.step = function (run, dt) {
     if (run.over || run.phase !== 'play') return;
     run.t += dt; run.steps++;
-    S.stepTraining(run, dt);
     S.stepArmies(run, dt);
-    S.stepBattles(run, dt);
     run.cycleT += dt;
     if (run.cycleT >= C.game.cycle) { run.cycleT -= C.game.cycle; S.cycle(run); }
     S.stepEvents(run);
-    if (run.t >= C.game.endgame && run.t - dt < C.game.endgame) { run.fx.push({ type: 'endgame' }); S.logMoment(run, '18:00 ENDGAME: CAPITALS LOSE THEIR DEFENCE BONUS', 'warn', -1, true); }
+    if (run.t >= C.game.endgame && run.t - dt < C.game.endgame) { run.fx.push({ type: 'endgame' }); S.logMoment(run, '18:00 ENDGAME: RIVALS GO FOR EACH OTHER\'S CAPITALS', 'warn', -1, true); }
     if (run.steps % 10 === 0) stepCoalition(run);
     for (const f of run.factions) if (f.alive && f.ai && run.t >= f.ai.next) S.AI.think(run, f);
     if (run.steps % 10 === 0) {
@@ -222,8 +224,8 @@
       for (const f of run.factions) if (f.alive) {
         const n = S.ownCount(run, f.id);
         if (n > f.stats.peakSystems) f.stats.peakSystems = n;
-        const a = S.soldiers(run, f.id);
-        if (a > f.stats.peakArmy) f.stats.peakArmy = a;
+        const a = Math.round(S.militaryPower(run, f.id));
+        if (a > f.stats.peakPower) f.stats.peakPower = a;
       }
     }
     if (run.hist.length && run.t - run.hist[run.hist.length - 1][0] >= C.history.every) S.snapshot(run);
@@ -274,20 +276,20 @@
   S.checkInvariants = function (run, fails) {
     const nF = run.factions.length;
     for (const f of run.factions) {
-      for (const k of AS.STOCK_KEYS) if (!Number.isFinite(f[k])) fails.push(f.short + ' ' + k + ' not finite');
-      for (const k of ['alloy', 'fuel', 'food']) if (f[k] < -1e-6) fails.push(f.short + ' negative ' + k);
+      for (const k of AS.STOCK_KEYS) { if (!Number.isFinite(f[k])) fails.push(f.short + ' ' + k + ' not finite'); else if (f[k] < -1e-6) fails.push(f.short + ' negative ' + k); }
+      if (!(f.fuelEff >= 0 && f.fuelEff <= 1 + 1e-9)) fails.push(f.short + ' fuel efficiency ' + f.fuelEff);
+      if (!(f.farmFrac >= 0 && f.farmFrac <= 1 + 1e-9)) fails.push(f.short + ' farm share');
       if (f.alive && run.started && !run.systems.some(s => s.owner === f.id)) fails.push(f.short + ' alive with no systems');
-      for (const t of AS.UPG_TRACKS) if (!(f.up[t] >= 0 && f.up[t] <= 5)) fails.push(f.short + ' bad upgrade level');
     }
+    const okCount = v => Number.isInteger(v) && v >= 0;
     for (const s of run.systems) {
       if (s.owner < -1 || s.owner >= nF) fails.push(s.name + ' bad owner');
       if (s.owner >= 0 && !run.factions[s.owner].alive) fails.push(s.name + ' owned by dead faction');
-      if (s.gar.n < 0 || s.gar.n !== Math.floor(s.gar.n)) fails.push(s.name + ' garrison ' + s.gar.n);
-      if (s.gar.vet < 0 || s.gar.vet > 1.0001) fails.push(s.name + ' vet');
-      if (s.battle && !run.battles.some(b => b.id === s.battle)) fails.push(s.name + ' dangling battle');
+      for (const k of AS.UNIT_KEYS) if (!okCount(s.gar[k])) fails.push(s.name + ' garrison ' + k + ' ' + s.gar[k]);
       if (s.capital >= 0 && s.owner !== s.capital) fails.push(s.name + ' capital not owned by its faction');
-      if (s.owner >= 0 && s.pathways.length > C.econ.maxPathways) fails.push(s.name + ' too many pathways');
-      for (const pw of s.pathways) if (!s.planets[pw.a] || !s.planets[pw.b] || pw.a === pw.b || !(pw.dur >= 0 && pw.dur <= 100)) fails.push(s.name + ' bad pathway');
+      if (s.pathways.length > C.econ.maxPathways) fails.push(s.name + ' too many pathways');
+      if (!okCount(s.workers) || s.workers > S.crewNeed(s)) fails.push(s.name + ' workers ' + s.workers + '/' + S.crewNeed(s));
+      for (const pw of s.pathways) if (!s.planets[pw.a] || !s.planets[pw.b] || pw.a === pw.b) fails.push(s.name + ' bad pathway');
       const f = s.owner >= 0 ? run.factions[s.owner] : null;
       s.planets.forEach((p, pi) => {
         const slots = new Set();
@@ -295,15 +297,16 @@
           if (!AS.BLD[b.kind]) fails.push(p.name + ' unknown building');
           if (slots.has(b.slot)) fails.push(p.name + ' two buildings in one slot');
           slots.add(b.slot);
-          if (!(b.slot >= 0 && b.slot < S.slotCount(p, f) + 1)) fails.push(p.name + ' building outside slots');
-          if (!(b.dur >= 0 && b.dur <= 100)) fails.push(p.name + ' building dur');
+          if (!(b.slot >= 0 && b.slot < S.slotCount(p, f))) fails.push(p.name + ' building outside slots');
+          if (!(b.lvl >= 1 && b.lvl <= C.upgrade.max)) fails.push(p.name + ' building level');
           if (b.drill) {
-            if (AS.BLD[b.kind].role !== 'ext') fails.push(p.name + ' drill on a processor');
+            if (AS.BLD[b.kind].role !== 'ext') fails.push(p.name + ' drill on a non-extractor');
             const d = p.deposits[b.drill.dep];
             if (!d || d.res !== AS.BLD[b.kind].res) fails.push(p.name + ' drill into the wrong deposit');
             for (const c of b.drill.path) if (S.rockAt(p, c) === 3) fails.push(p.name + ' drill through a barrier');
           }
           if (b.out) {
+            if (AS.BLD[b.kind].role !== 'ext' || !AS.RES[AS.BLD[b.kind].res].proc) fails.push(p.name + ' conveyor from a building that cannot have one');
             if (b.out.b !== undefined) { const q = S.bldById(p, b.out.b); if (!q || AS.BLD[q.kind].res !== AS.BLD[b.kind].res || AS.BLD[q.kind].role !== 'proc') fails.push(p.name + ' conveyor to a wrong building'); }
             else if (!s.pathways.some(pw => pw.id === b.out.p && (pw.a === pi || pw.b === pi))) fails.push(p.name + ' conveyor to a missing port');
           }
@@ -315,14 +318,9 @@
         }
         for (const d of p.deposits) if (!(d.amount >= 0 && d.amount <= d.max)) fails.push(p.name + ' deposit amount');
       });
-      if (s.pop < 0 || s.pop > C.econ.popMax) fails.push(s.name + ' pop');
-    }
-    for (const b of run.battles) {
-      if (run.systems[b.sys].battle !== b.id) fails.push('battle not linked');
-      if (!run.factions[b.att.owner].alive) fails.push('dead attacker');
     }
     for (const a of run.armies) {
-      if (a.n < 0 || a.ships < 0 || a.n !== Math.floor(a.n)) fails.push('army counts');
+      for (const k of AS.UNIT_KEYS) if (!okCount(a.units[k])) fails.push('army counts');
       if (!run.factions[a.owner].alive) fails.push('army of dead faction');
       for (let i = 0; i + 1 < a.path.length; i++) if (!S.laneBetween(run, a.path[i], a.path[i + 1])) fails.push('army path without lane');
     }

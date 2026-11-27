@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-/* ATLAS SYNDICATE v6 — headless test runner (Node 16+, no dependencies).
+/* ATLAS SYNDICATE v7 — headless test runner (Node 16+, no dependencies).
    Loads the same simulation files the browser uses and runs:
      selftest    rule checks (same as tests/selftest.html)
      tournament  N full games of six AI factions (the player's slot played by the 'balanced' AI) across
                  seeds and difficulties, then the same games with coalitions switched off (A/B)
      player      the scripted average player (tests/average-player.js) on Easy, Normal and Hard
      economy     50 seeds: AI-built planets produce what their buildings claim, no building idle > 3 min,
-                 every resource is spent on something
+                 every resource is used for something
      fuzz        random (often invalid) player actions incl. every planet action; no crash, NaN or broken invariant
      replay      same seed + same action log = identical state; save/load mid-game = identical
      f9          the presenter jump to 15:00 leaves a playable mid-war galaxy
@@ -18,7 +18,7 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
-const FILES = ['js/config.js', 'js/util.js', 'js/sim/planet.js', 'js/sim/galaxy.js', 'js/sim/economy.js', 'js/sim/combat.js', 'js/sim/upgrades.js', 'js/sim/events.js',
+const FILES = ['js/config.js', 'js/util.js', 'js/sim/planet.js', 'js/sim/galaxy.js', 'js/sim/economy.js', 'js/sim/combat.js', 'js/sim/events.js',
   'js/sim/sim.js', 'js/sim/actions.js', 'js/sim/ai/personalities.js', 'js/sim/ai/brain.js', 'js/sim/selftest.js', 'tests/average-player.js'];
 for (const f of FILES) vm.runInThisContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), { filename: f });
 const AS = globalThis.AS, S = AS.S, U = AS.U, C = AS.CONFIG;
@@ -148,35 +148,32 @@ function player() {
 function economy() {
   const seeds = seedList(+opt('econ', 50), 11);
   console.log('\n== ECONOMY SANITY: ' + seeds.length + ' seeds, all-AI games to 20:00 ==');
-  let checked = 0, mismatches = 0, evSkipped = 0, idleLong = 0, idleSamples = [], buildings = 0;
-  const used = { credits: 0, alloy: 0, fuel: 0, food: 0 }, made = { credits: 0, alloy: 0, fuel: 0, food: 0 };
+  let checked = 0, mismatches = 0, evSkipped = 0, idleLong = 0, idleSamples = [], buildings = 0, starvedCycles = 0, cycles = 0;
+  const used = { money: 0, gold: 0, water: 0, food: 0, fuel: 0 }, made = { gold: 0, water: 0, food: 0, fuel: 0 };
   for (const seed of seeds) {
     const run = S.createRun(seed, { diff: 'normal', slot0: 'balanced' });
     S.begin(run, -1);
     const idleSince = {};
     while (run.t < 1200 && !run.over) {
-      const before = run.factions.map(f => ({ credits: f.credits, alloy: f.alloy, fuel: f.fuel, food: f.food }));
       const lastCycle = run.cycleT + C.sim.step >= C.game.cycle;
       let claims = null;
-      if (lastCycle) claims = run.factions.map(f => { const o = { credits: 0, alloy: 0, fuel: 0, food: 0 }; for (const s of run.systems) if (s.owner === f.id) { const fl = S.sysFlow(run, s); for (const k in o) o[k] += fl.out[k]; } return o; });
-      const sig = () => run.events.active.map(e => e.type + e.start).join() + '|' + run.systems.map(s => s.owner + ':' + s.pathways.map(w => w.id + (w.dur > 0 ? 'u' : 'x')).join() + ':' + s.planets.map(p => p.blds.map(b => b.id + (b.dur > 0 ? 'u' : 'x') + (b.drill ? 'd' + (b.drill.dur > 0 ? 1 : 0) : '') + (b.out ? 'o' + (b.out.b !== undefined ? b.out.b : 'p' + b.out.p) + (b.out.dur > 0 ? 1 : 0) : '')).join() + '/' + Object.keys(p.portIn).map(k => k + '>' + p.portIn[k].b + (p.portIn[k].dur > 0 ? 1 : 0)).join()).join(';')).join('#');
+      if (lastCycle) claims = run.factions.map(f => { const o = { gold: 0, water: 0, food: 0, fuel: 0 }; for (const s of run.systems) if (s.owner === f.id) { const fl = S.sysFlow(run, s); o.gold += fl.out.gold; o.water += fl.out.water; o.fuel += fl.out.fuel; } return o; });
+      const sig = () => run.events.active.map(e => e.type + e.start).join() + '|' + run.systems.map(s => s.owner + ':' + s.workers + ':' + s.pathways.map(w => w.id).join() + ':' + s.planets.map(p => p.blds.map(b => b.id + 'l' + b.lvl + (b.drill ? 'd' : '') + (b.out ? 'o' + (b.out.b !== undefined ? b.out.b : 'p' + b.out.p) : '')).join() + '/' + Object.keys(p.portIn).map(k => k + '>' + p.portIn[k].b).join()).join(';')).join('#');
       const evBefore = claims ? sig() : '';
       S.step(run, C.sim.step);
-      if (claims && sig() !== evBefore) { claims = null; evSkipped++; }   // something was built, broken, captured or an event began inside this exact tick: the claim is stale
-      for (const e of run.fx) if (e.type === 'yield') { /* produced this cycle */ }
+      if (claims && sig() !== evBefore) { claims = null; evSkipped++; }   // something was built, upgraded, captured or an event began inside this exact tick: the claim is stale
       run.fx.length = 0;
       if (claims) {
-        // production the buildings claimed must be exactly what the cycle paid out (before spending)
+        // production the buildings claimed must be exactly what the cycle paid out
         for (const f of run.factions) {
           if (!f.alive) continue;
-          checked++;
+          checked++; cycles++;
+          if (f.hungry) starvedCycles++;
           const lc = f.lastCycle.got;
-          for (const k of ['alloy', 'fuel', 'food']) if (Math.abs(lc[k] - claims[f.id][k]) > 1e-6) { mismatches++; if (process.env.DBG) console.log('MISMATCH', seed, Math.round(run.t), f.id, k, lc[k], claims[f.id][k]); }
-          const credClaim = (claims[f.id].credits + C.econ.levy * S.ownCount(run, f.id)) * f.mods.income;
-          if (Math.abs(lc.credits - credClaim) > 1e-6 && Math.abs(lc.credits - credClaim) / Math.max(1, credClaim) > 0.2) mismatches++;
+          for (const k of ['gold', 'water', 'fuel']) if (Math.abs(lc[k] - claims[f.id][k]) > 1e-6) { mismatches++; if (process.env.DBG) console.log('MISMATCH', seed, Math.round(run.t), f.id, k, lc[k], claims[f.id][k]); }
           for (const k in made) made[k] += lc[k];
         }
-        // idle buildings in AI empires: count any that stay idle/blocked for over 3 minutes (broken = repairs pending, empty = depleted: excluded)
+        // idle buildings in AI empires: count any that stay idle/blocked for over 3 minutes (no workers = food problem, empty = depleted: excluded)
         for (const s of run.systems) {
           if (s.owner < 0) continue;
           const fl = S.sysFlow(run, s);
@@ -191,15 +188,15 @@ function economy() {
       }
     }
     for (const f of run.factions) {
-      used.credits += f.stats.salary + f.stats.spent; used.alloy += f.stats.alloyUsed; used.fuel += f.stats.fuelUsed; used.food += f.stats.foodUsed;
+      used.money += f.stats.spent; used.gold += f.stats.sold; used.water += f.stats.waterUsed; used.food += f.stats.foodUsed; used.fuel += f.stats.fuelUsed;
       buildings += run.systems.filter(s => s.owner === f.id).reduce((a, s) => a + s.planets.reduce((x, p) => x + p.blds.length, 0), 0);
     }
   }
-  const allUsed = used.credits > 0 && used.fuel > 0 && used.food > 0 && used.alloy > 0;
-  results.economy = { seeds: seeds.length, cycleChecks: checked, mismatches, skippedChangedTicks: evSkipped, idleOver3Min: idleLong, idleSamples, buildingsPerGame: Math.round(buildings / seeds.length), made: Object.fromEntries(Object.entries(made).map(([k, v]) => [k, Math.round(v / seeds.length)])), used: Object.fromEntries(Object.entries(used).map(([k, v]) => [k, Math.round(v / seeds.length)])) };
+  const allUsed = Object.values(used).every(v => v > 0);
+  results.economy = { seeds: seeds.length, cycleChecks: checked, mismatches, skippedChangedTicks: evSkipped, idleOver3Min: idleLong, idleSamples, starvingCyclesPct: pct(starvedCycles, cycles), buildingsPerGame: Math.round(buildings / seeds.length), made: Object.fromEntries(Object.entries(made).map(([k, v]) => [k, Math.round(v / seeds.length)])), used: Object.fromEntries(Object.entries(used).map(([k, v]) => [k, Math.round(v / seeds.length)])) };
   console.log('  ' + JSON.stringify(results.economy));
   if (mismatches) fail('production did not match what buildings claimed (' + mismatches + ')');
-  if (!allUsed) fail('a resource is never spent');
+  if (!allUsed) fail('a resource is never used');
 }
 function fuzz() {
   console.log('\n== FUZZ: ' + NFUZZ + ' games of random player actions ==');
@@ -223,8 +220,8 @@ function fuzz() {
           const pw = s && s.pathways.length ? s.pathways[pickI(s.pathways.length)] : null;
           const cell = () => pickI(S.GW * S.GH + 4) - 2;
           let r;
-          switch (pickI(20)) {
-            case 0: r = S.act(run, 0, 'build', { sys, planet: pi, slot: pickI(12) - 1, kind: R() < 0.9 ? AS.BLD_KEYS[pickI(8)] : 'bogus' }); break;
+          switch (pickI(16)) {
+            case 0: r = S.act(run, 0, 'build', { sys, planet: pi, slot: pickI(12) - 1, kind: R() < 0.9 ? AS.BLD_KEYS[pickI(AS.BLD_KEYS.length)] : 'bogus' }); break;
             case 1: { // a real cheapest drill most of the time, garbage otherwise
               if (b && p && R() < 0.7) { const d = p.deposits[pickI(p.deposits.length)]; const dr = d && S.bestDrill(run, f0, p, b.slot, d); r = S.act(run, 0, 'drill', { sys, planet: pi, bld: b.id, path: dr ? dr.path : [] }); }
               else r = S.act(run, 0, 'drill', { sys, planet: pi, bld: b ? b.id : 9999, path: Array.from({ length: pickI(12) }, cell) });
@@ -236,18 +233,14 @@ function fuzz() {
             case 5: r = S.act(run, 0, 'demolish', { sys, planet: pi, bld: b ? b.id : -3 }); break;
             case 6: r = S.act(run, 0, 'pathway', { sys, a: pickI(7) - 1, b: pickI(7) - 1 }); break;
             case 7: r = S.act(run, 0, 'unpath', { sys, pathway: pw ? pw.id : 12345 }); break;
-            case 8: r = S.act(run, 0, 'repair', { sys, kind: ['all', 'bld', 'drill', 'conv', 'portconv', 'pathway', 'plat', 'ships', 'x'][pickI(9)], planet: pi, id: b ? b.id : pw ? pw.id : -1 }); break;
-            case 9: r = S.act(run, 0, 'recruit', { sys, n: pickI(40) - 5 }); break;
-            case 10: r = S.act(run, 0, 'cancel', { sys }); break;
-            case 11: r = S.act(run, 0, 'ship', { sys }); break;
-            case 12: r = S.act(run, 0, 'plat', { sys }); break;
-            case 13: r = S.act(run, 0, 'move', { from: f0.capital, to: pickI(26) - 1, frac: R() * 1.4 - 0.2, mode: R() < 0.3 ? 'raid' : 'attack' }); break;
-            case 14: r = S.act(run, 0, 'buy', { sys: pickI(26) - 1 }); break;
-            case 15: if (run.battles.length) r = S.act(run, 0, 'retreat', { battle: run.battles[pickI(run.battles.length)].id }); break;
-            case 16: r = S.act(run, 0, 'upgrade', { track: R() < 0.9 ? AS.UPG_TRACKS[pickI(4)] : 'nonsense' }); break;
-            case 17: r = S.act(run, 0, 'autorepair', { on: R() < 0.5 }); break;
-            case 18: if (R() < 0.05) { f0.credits += 3000; f0.alloy += 300; } else r = S.act(run, 0, 'bogus', {}); break;
-            case 19: if (R() < 0.03) { f0.food = 0; f0.fuel = 0; } break;
+            case 8: r = S.act(run, 0, 'upgrade', { sys, planet: pi, bld: b ? b.id : -1 }); break;
+            case 9: r = S.act(run, 0, 'trade', { res: R() < 0.9 ? AS.MARKET_KEYS[pickI(4)] : 'money', qty: pickI(120) - 60 + (R() < 0.05 ? 0.5 : 0) }); break;
+            case 10: r = S.act(run, 0, 'units', { sys, kind: R() < 0.9 ? AS.UNIT_KEYS[pickI(3)] : 'tank', n: pickI(14) - 2 }); break;
+            case 11: r = S.act(run, 0, 'move', { from: f0.capital, to: pickI(26) - 1, frac: R() * 1.4 - 0.2 }); break;
+            case 12: r = S.act(run, 0, 'buy', { sys: pickI(26) - 1 }); break;
+            case 13: if (R() < 0.05) { f0.money += 3000; } else r = S.act(run, 0, 'bogus', {}); break;
+            case 14: if (R() < 0.03) { f0.food = 0; f0.fuel = 0; f0.water = 0; } break;
+            case 15: r = S.act(run, 0, 'move', { from: pickI(26) - 1, to: f0.capital, frac: 1 }); break;
           }
           if (r && r.ok) okActs++;
         }

@@ -1,6 +1,6 @@
-/* ATLAS SYNDICATE v6 — ui/screens.js
+/* ATLAS SYNDICATE v7 — ui/screens.js
    Every menu screen, drawn in-canvas with the pixel fonts (v4's panel, card and chart code):
-   title, new game, the upgrade shop, settings, achievements, how to play, code entry, pause,
+   title, new game, the shop (market and military), settings, achievements, how to play, code entry, pause,
    and the end-of-run report. */
 (function (AS) {
   'use strict';
@@ -85,14 +85,14 @@
     AS.Font.logo(ctx, 'SYNDICATE', cx, ly + 8 * sc + 4, Math.max(2, sc - 1), [7, 7, 6, 6, 5, 5, 4]);
     const ry = ly + 8 * sc + 4 + 8 * Math.max(2, sc - 1) + 6;
     D.hazard(ctx, Math.round(cx - 90), ry, 180, 3, 13, G.time * 6);
-    TS(ctx, 'DRILL. REFINE. RAISE AN ARMY.', cx, ry + 7, 7, 'center');
+    TS(ctx, 'DRILL. FARM. SELL GOLD. BUILD A FLEET.', cx, ry + 7, 7, 'center');
     if (G.oldSaveMsg) T(ctx, 'YOUR SAVE FROM AN OLDER VERSION WAS REMOVED', cx, ry + 25, 17, { align: 'center' });
     TS(ctx, 'TAKE THE GALAXY FROM FIVE AI RIVALS.', cx, ry + 15, 5, 'center');
     const save = G.saveInfo;
     const items = [];
     if (save) items.push(['CONTINUE  ' + U.fmtTime(save.run.t), () => AS.Main.resume(save), { primary: true, tip: 'RESUME YOUR LAST GAME.' }]);
     items.push(['NEW GAME', () => Sc.open('newgame', { seed: U.randomSeed() }), { primary: !save, tip: 'A NEW RANDOM GALAXY.' }]);
-    items.push(['ENTER CODE', () => Sc.open('code'), { tip: 'PLAY A GALAXY SOMEONE SHARED: SAME SEED, CORPORATION AND DIFFICULTY.' }]);
+    items.push(['ENTER CODE', () => Sc.open('code'), { tip: 'PLAY A GALAXY SOMEONE SHARED: SAME SEED AND DIFFICULTY.' }]);
     items.push(['WATCH THE AI PLAY', () => AS.Main.startAttract(0), { tip: 'DEMO MODE: AN AI PLAYS YOUR FACTION.' }]);
     const got = Object.keys(Act.achievements()).length;
     items.push(['ACHIEVEMENTS  ' + got + '/' + AS.ACHIEVEMENTS.length, () => Sc.open('ach'), {}]);
@@ -176,22 +176,23 @@
 
   /* ---------- how to play ---------- */
   function drawHelp(ctx) {
-    const p = panel(ctx, 490, 250, 'HOW TO PLAY');
+    const p = panel(ctx, 500, 262, 'HOW TO PLAY');
     const L = [
       ['GOAL', 'ELIMINATE EVERY RIVAL, OR HOLD THE MOST SYSTEMS AT 30:00. LOSE YOUR CAPITAL AND YOU LOSE.'],
-      ['VIEWS', 'GALAXY > SYSTEM > PLANET. CLICK YOUR SYSTEM, THEN A PLANET. ESC GOES BACK.'],
-      ['PLANET', 'CLICK AN EMPTY SLOT: BUILD. DRAG DOWN FROM AN EXTRACTOR TO A DEPOSIT: DRILL (BARRIERS CANNOT BE DRILLED).'],
-      ['', 'DRAG AN EXTRACTOR ACROSS TO ITS PROCESSOR: CONVEYOR. METAL > SMELTER = ALLOY. GOLD > MINT = CREDITS.'],
-      ['', 'ICE > WATER PLANT = FOOD. CRUDE > REFINERY = FUEL. PROCESSORS WORK 50% BETTER ON MATCHING PLANETS.'],
-      ['SYSTEM', 'DRAG PLANET > PLANET: PATHWAY. EACH END GETS A PORT: SEND RAW RESOURCES TO WHERE THERE IS ROOM.'],
-      ['STOCKS', 'CREDITS PAY SALARIES. FOOD FEEDS SOLDIERS. FUEL MOVES ARMIES. ALLOY BUILDS AND REPAIRS.'],
-      ['', 'EVERYTHING WEARS OUT; DEPOSITS RUN DRY. THE SHOP (U) SELLS PERMANENT UPGRADES.'],
-      ['WAR', 'DRAG FROM YOUR SYSTEM ONTO A NEIGHBOUR: SEE THE ODDS AND FUEL, PICK HOW MANY, ATTACK OR RAID.'],
+      ['VIEWS', 'GALAXY > SYSTEM > PLANET. CLICK YOUR SYSTEM, THEN A PLANET. ESC GOES BACK. TAB HIDES THE LEFT PANEL.'],
+      ['BUILD', 'CLICK A + SLOT: THE BUILD LIST OPENS AT THE TOP OF THE LEFT PANEL. DRAG DOWN FROM AN EXTRACTOR TO DRILL.'],
+      ['GOLD', 'GOLD MINE > GOLD. SELL IT ON THE MARKET (SHOP, OR SELL GOLD IN THE PANEL) FOR MONEY. MONEY BUYS EVERYTHING.'],
+      ['FOOD', 'ICE DRILL > (CONVEYOR) > WATER PLANT = WATER. GREENHOUSE OR LIVESTOCK FARM: WATER > FOOD.'],
+      ['', 'EVERY BUILDING BRINGS 2 WORKERS WHO EAT FOOD. NO FOOD: WORKERS DIE AND THEIR MACHINES STOP.'],
+      ['FUEL', 'FUEL PUMP > (CONVEYOR) > REFINERY = FUEL. YOUR MILITARY BURNS IT; SHORT OF FUEL IT LOSES POWER.'],
+      ['UPGRADE', 'MACHINES NEVER WEAR OUT. CLICK ONE AND UPGRADE IT (LEVEL 2, 3): +50% EACH.'],
+      ['MILITARY', 'YOU START WITH NONE. SHOP: SPACE SHIP = 1 POWER, DESTROYER = 5, ORBITAL STRIKE CANNON = 10.'],
+      ['WAR', 'DRAG FROM YOUR SYSTEM ONTO A NEIGHBOUR. THE BIGGER POWER WINS AND KEEPS THE DIFFERENCE. NO DICE.'],
       ['', 'NOBODY ATTACKS BEFORE 4:00. ANYONE AT 35% FACES A COALITION OF EVERYONE ELSE.'],
-      ['KEYS', 'SPACE PAUSE  1 2 3 SPEED  ESC BACK  U SHOP  WASD PAN  Q/E ZOOM  T TIPS  M MUTE  F9 JUMP TO 15:00'],
+      ['KEYS', 'SPACE PAUSE  1 2 3 SPEED  ESC BACK  B SHOP  TAB PANEL  WASD PAN  Q/E ZOOM  T TIPS  M MUTE'],
       ['TOUCH', 'TAP = CLICK. DRAG = PAN, DRILL OR CONNECT. PINCH = ZOOM.'],
     ];
-    L.forEach(([h, t], i) => { const y = p.y + 26 + i * 15; if (h) T(ctx, h, p.x + 12, y, 12, { big: true }); TS(ctx, t, p.x + 62, y + 1, 7); });
+    L.forEach(([h, t], i) => { const y = p.y + 26 + i * 16; if (h) T(ctx, h, p.x + 12, y, 12, { big: true }); TS(ctx, t, p.x + 70, y + 1, 7); });
     backBtn(ctx, p);
   }
 
@@ -225,29 +226,66 @@
     items.forEach(([l, fn, o], i) => G.button(ctx, p.x + 30, p.y + 30 + i * 18, p.w - 60, 14, l, () => { AS.Sfx.play('click'); fn(); }, o));
   }
 
-  /* ---------- the upgrade shop ---------- */
+  /* ---------- the shop: market (left) and military (right) ---------- */
   function drawShop(ctx) {
     const run = G.run, f = run && run.factions[0];
     if (!f) { Sc.close(); return; }
-    const p = panel(ctx, Math.min(G.W - 8, 520), Math.min(G.H - 8, 230), 'UPGRADE SHOP', 'PERMANENT. BOUGHT IN ORDER ALONG EACH TRACK. TIME KEEPS RUNNING. YOU HAVE ' + Math.floor(f.credits) + ' CR, ' + Math.floor(f.alloy) + ' ALLOY');
-    const cw = Math.floor((p.w - 20) / 4), rh = Math.floor((p.h - 54) / 5);
-    AS.UPG_TRACKS.forEach((t, ti) => {
-      const T2 = AS.UPGRADES[t], x = p.x + 8 + ti * (cw + 1), lvl = f.up[t];
-      T(ctx, T2.name, x + cw / 2, p.y + 28, T2.col, { big: true, align: 'center' });
-      T2.items.forEach((it, i) => {
-        const y = p.y + 38 + i * rh, owned = i < lvl, next = i === lvl, price = AS.upgPrice(i);
-        const can = next && S.canPay(f, price);
-        D.frame(ctx, x, y, cw - 2, rh - 2, owned ? 20 : next ? 3 : 1, owned ? 21 : next ? (can ? 13 : 4) : 2);
-        T(ctx, it.name, x + 4, y + 3, owned ? 22 : next ? 31 : 5, { big: rh >= 30 && cw >= 110 });
-        const dl = U.wrapText(it.desc, Math.floor((cw - 10) / 4));
-        dl.slice(0, 2).forEach((l, j) => TS(ctx, l, x + 4, y + (rh >= 30 ? 13 : 10) + j * 7, owned ? 7 : next ? 7 : 4));
-        if (owned) TS(ctx, 'OWNED', x + cw - 6, y + 3, 22, 'right');
-        else TS(ctx, price[0] + ' CR ' + price[1] + ' AL', x + cw - 6, y + rh - 9, can ? 13 : 4, 'right');
-        if (next) G.btns.push({ x, y, w: cw - 2, h: rh - 2, fn: () => (can ? AS.Act.upgrade(t) : AS.Act.fail({ reason: 'cost', cost: price })), press: true, label: 'upg:' + t });
-        G.tip(x, y, cw - 2, rh - 2, it.name + ': ' + it.desc + (owned ? ' (OWNED)' : next ? ' PRICE ' + price[0] + ' CREDITS AND ' + price[1] + ' ALLOY.' : ' BUY THE ONES ABOVE FIRST.'));
-      });
-    });
-    G.button(ctx, Math.round(G.W / 2 - 40), p.y + p.h - 16, 80, 13, 'CLOSE', () => { AS.Sfx.play('click'); Sc.close(); }, { tip: 'ESC OR U' });
+    if (!(G.shopSys >= 0 && run.systems[G.shopSys] && run.systems[G.shopSys].owner === 0)) G.shopSys = f.capital;
+    const p = panel(ctx, Math.min(G.W - 8, 560), Math.min(G.H - 8, 262), 'SHOP', 'YOU HAVE $' + U.fmtInt(f.money) + '.  TIME KEEPS RUNNING.');
+    const fc = G.forecast || S.forecast(run, f);
+    const colW = Math.floor((p.w - 24) / 2), lx = p.x + 8, rx = p.x + 16 + colW;
+    const big = colW >= 240;
+    // ---- market ----
+    let y = p.y + 30;
+    D.rect(ctx, lx, y, colW, 11, 3); T(ctx, 'MARKET', lx + 4, y + 2, 13, { big: true }); TS(ctx, 'FIXED PRICES, BUY OR SELL', lx + colW - 4, y + 3, 6, 'right');
+    y += 14;
+    const rh = 40;
+    for (const k of AS.MARKET_KEYS) {
+      const st = AS.STOCK[k], have = Math.floor(f[k]), price = S.price(run, k);
+      D.frame(ctx, lx, y, colW, rh - 3, 1, 3);
+      ctx.drawImage(AS.Spr.goods[k], lx + 4, y + 4);
+      T(ctx, st.name, lx + 12, y + 3, st.col, { big: true });
+      T(ctx, '$' + price + ' EACH', lx + colW - 4, y + 3, 31, { big: true, align: 'right' });
+      const net = fc[k].net;
+      TS(ctx, 'YOU HAVE ' + have + '   ' + (net >= 0 ? '+' : '') + net + ' PER CYCLE', lx + 12, y + 13, 6);
+      G.tip(lx, y, colW, 20, st.name + ': ' + st.use);
+      const bw = Math.floor((colW - 14) / 4), by = y + 21;
+      const btn = (i, label, fn, o) => G.button(ctx, lx + 4 + i * (bw + 2), by, bw, 12, label, fn, Object.assign({ big: false }, o));
+      btn(0, 'SELL ALL', () => AS.Act.trade(k, -have), { disabled: have < 1, primary: k === 'gold' && have >= 1, tip: 'SELL ' + have + ' FOR $' + Math.round(have * price) + '.' });
+      btn(1, 'SELL 10', () => AS.Act.trade(k, -10), { disabled: have < 1, tip: 'SELL UP TO 10 FOR $' + Math.round(Math.min(10, have) * price) + '.' });
+      btn(2, 'BUY 10', () => AS.Act.trade(k, 10), { disabled: f.money < price * 10, tip: 'BUY 10 FOR $' + Math.ceil(price * 10) + '.' });
+      btn(3, 'BUY 50', () => AS.Act.trade(k, 50), { disabled: f.money < price * 50, tip: 'BUY 50 FOR $' + Math.ceil(price * 50) + '.' });
+      y += rh;
+    }
+    // ---- military ----
+    y = p.y + 30;
+    const sys = run.systems[G.shopSys], own = run.systems.filter(s => s.owner === 0);
+    D.rect(ctx, rx, y, colW, 11, 3); T(ctx, 'MILITARY', rx + 4, y + 2, 17, { big: true });
+    const cyc = d => { const i = own.indexOf(sys); G.shopSys = own[(i + d + own.length) % own.length].id; AS.Sfx.play('click'); };
+    G.button(ctx, rx + colW - 26, y, 11, 11, '<', () => cyc(-1), { big: false, disabled: own.length < 2, tip: 'PREVIOUS SYSTEM.' });
+    G.button(ctx, rx + colW - 13, y, 11, 11, '>', () => cyc(1), { big: false, disabled: own.length < 2, tip: 'NEXT SYSTEM.' });
+    TS(ctx, 'FOR ' + sys.name, rx + colW - 30, y + 3, 31, 'right');
+    G.tip(rx, y, colW - 28, 11, 'UNITS YOU BUY APPEAR IN ' + sys.name + '. CHANGE IT WITH < >, OR OPEN THE SHOP FROM A SYSTEM.');
+    y += 14;
+    const here = Math.round(S.sysPower(run, sys)), tot = Math.round(S.militaryPower(run, 0));
+    TS(ctx, 'POWER AT ' + sys.name + ': ' + here + '   TOTAL: ' + tot + (f.fuelEff < 0.999 ? '   FUEL ' + Math.round(f.fuelEff * 100) + '%!' : ''), rx, y, f.fuelEff < 0.999 ? 17 : 7);
+    y += 9;
+    const uh = 44;
+    for (const k of AS.UNIT_KEYS) {
+      const U2 = AS.UNITS[k], cost = S.unitCost(run, k);
+      D.frame(ctx, rx, y, colW, uh - 3, 1, 3);
+      ctx.drawImage(AS.Spr.icons[U2.icon], rx + 4, y + 4);
+      T(ctx, U2.name, rx + 12, y + 3, 31, { big: true });
+      T(ctx, '$' + cost, rx + colW - 4, y + 3, cost < U2.cost ? 22 : 13, { big: true, align: 'right' });
+      TS(ctx, 'POWER ' + U2.power + '   FUEL ' + U2.fuel + '/CYCLE   ' + (big ? '$' + Math.round(cost / U2.power * 10) / 10 + ' PER POWER' : ''), rx + 12, y + 13, 6);
+      TS(ctx, 'AT ' + sys.name + ': ' + sys.gar[k], rx + 12, y + 20, 5);
+      G.tip(rx, y, colW, 26, U2.name + ': ' + U2.desc + ' BURNS ' + U2.fuel + ' FUEL PER CYCLE; WITHOUT FUEL IT FIGHTS AT THE SHARE OF FUEL YOU HAVE.');
+      const bw = Math.floor((colW - 12) / 3), by = y + 27;
+      [[1, 'BUY 1'], [5, 'BUY 5'], [10, 'BUY 10']].forEach(([n, l], i) => G.button(ctx, rx + 4 + i * (bw + 2), by, bw, 12, l + ' $' + cost * n, () => AS.Act.buyUnits(sys.id, k, n), { big: false, disabled: f.money < cost * n, primary: i === 0 && AS.Tutorial && AS.Tutorial.want('units') && f.money >= cost, tip: '+' + n * U2.power + ' POWER AT ' + sys.name + '.' }));
+      y += uh;
+    }
+    TS(ctx, 'IN A FIGHT THE BIGGER POWER WINS AND KEEPS THE DIFFERENCE.', rx, y + 1, 5);
+    G.button(ctx, Math.round(G.W / 2 - 40), p.y + p.h - 16, 80, 13, 'CLOSE', () => { AS.Sfx.play('click'); Sc.close(); }, { tip: 'ESC OR B' });
   }
 
   /* ---------- end-of-run report ---------- */
@@ -281,8 +319,9 @@
     let y = p.y + 30;
     T(ctx, 'RANK ' + ORD[place] + ' OF 6', lx, y, won ? 13 : 7, { big: true }); y += 12;
     const rows = [['SYSTEMS HELD (PEAK)', S.ownCount(run, 0) + ' (' + f.stats.peakSystems + ')'], ['CAPTURED / LOST', f.stats.captured + ' / ' + f.stats.systemsLost], ['BOUGHT', f.stats.bought], ['RIVALS ELIMINATED', f.stats.eliminated],
-      ['DEFENCES HELD', f.stats.defended], ['RAIDS', f.stats.raids], ['SOLDIERS LOST / KILLED', f.stats.lost + ' / ' + f.stats.killed], ['DESERTED', f.stats.deserted], ['TOTAL INCOME', U.fmtInt(f.stats.income) + ' CR'], ['SALARIES PAID', U.fmtInt(f.stats.salary) + ' CR'],
-      ['ALLOY / FUEL / FOOD MADE', Math.round(f.stats.alloyMade) + ' / ' + Math.round(f.stats.fuelMade) + ' / ' + Math.round(f.stats.foodMade)], ['DIFFICULTY', AS.DIFFICULTY[run.diff].name]];
+      ['DEFENCES HELD', f.stats.defended], ['PEAK MILITARY POWER', f.stats.peakPower], ['POWER LOST / DESTROYED', Math.round(f.stats.lost) + ' / ' + Math.round(f.stats.killed)], ['WORKERS STARVED', f.stats.starved],
+      ['MARKET SALES', '$' + U.fmtInt(f.stats.sold)], ['SPENT ON MILITARY', '$' + U.fmtInt(f.stats.military)],
+      ['GOLD / FOOD / FUEL MADE', Math.round(f.stats.goldMade) + ' / ' + Math.round(f.stats.foodMade) + ' / ' + Math.round(f.stats.fuelMade)], ['DIFFICULTY', AS.DIFFICULTY[run.diff].name]];
     for (const [l, v] of rows) { TS(ctx, l, lx, y, 6); TS(ctx, v, lx + 160, y, 7, 'right'); y += 8; }
     y += 4;
     const code = U.makeCode(run.seed, run.diff);
@@ -296,14 +335,14 @@
     chart(ctx, rx, p.y + 28, cw, 62, run.hist, run.factions.map((x, i) => [1 + i, x.col]), 'SYSTEMS HELD PER FACTION', v => v);
     run.factions.forEach((x, i) => { ctx.drawImage(AS.Spr.factionIcon(x.icon, x.col), rx + 4 + i * 28, p.y + 92); TS(ctx, x.id === 0 ? 'YOU' : AS.PERS_NAMES[x.pers].slice(0, 4), rx + 10 + i * 28, p.y + 92, x.alive ? x.col : 4); });
     const half = Math.floor((cw - 4) / 2);
-    chart(ctx, rx, p.y + 102, half, 40, run.hist, [[7, 13]], 'YOUR INCOME/CYCLE', v => v);
-    chart(ctx, rx + half + 4, p.y + 102, half, 40, run.hist, [[8, 17]], 'YOUR SOLDIERS', v => v);
+    chart(ctx, rx, p.y + 102, half, 40, run.hist, [[7, 31]], 'YOUR MONEY', v => '$' + v);
+    chart(ctx, rx + half + 4, p.y + 102, half, 40, run.hist, [[8, 17]], 'YOUR MILITARY POWER', v => v);
     TS(ctx, 'DECISIVE BATTLES', rx, p.y + 148, 12);
     const dec = run.battleLog.filter(b => b.att >= 0).map(b => Object.assign({ s: b.size + (b.capital ? 200 : 0) + (b.att === 0 || b.def === 0 ? 40 : 0) }, b)).sort((a, b) => b.s - a.s).slice(0, 6).sort((a, b) => a.t - b.t);
     dec.forEach((b, i) => {
       const A = run.factions[b.att], Dn = b.def >= 0 ? run.factions[b.def].short : 'INDEPENDENTS';
-      const W = b.winner === b.att ? A.short + (b.mode === 'raid' ? ' RAIDED ' : ' TOOK ') : (b.def >= 0 ? run.factions[b.def].short : 'INDEPENDENTS') + ' HELD ';
-      const txt = W + run.systems[b.sys].name + (b.winner === b.att ? ' FROM ' + Dn : ' VS ' + A.short) + (b.capital && b.winner === b.att ? ' (CAPITAL)' : '') + '  SIZE ' + b.size;
+      const W = b.winner === b.att ? A.short + ' TOOK ' : (b.def >= 0 ? run.factions[b.def].short : 'INDEPENDENTS') + ' HELD ';
+      const txt = W + run.systems[b.sys].name + (b.winner === b.att ? ' FROM ' + Dn : ' VS ' + A.short) + (b.capital && b.winner === b.att ? ' (CAPITAL)' : '') + '  ' + b.att0 + ' VS ' + b.def0;
       TS(ctx, U.fmtTime(b.t), rx + 18, p.y + 157 + i * 8, 5, 'right');
       TS(ctx, txt.slice(0, Math.floor((cw - 24) / 4)), rx + 22, p.y + 157 + i * 8, b.att === 0 || b.def === 0 ? (b.winner === 0 ? 22 : 17) : 7);
     });
@@ -330,7 +369,7 @@
       Sc.back(); return true;
     }
     const n = parseInt(k, 10);
-    if (scr === 'shop' && (k === 'u' || k === 'U')) { Sc.close(); return true; }
+    if (scr === 'shop' && (k === 'u' || k === 'U' || k === 'b' || k === 'B')) { Sc.close(); return true; }
     if (scr === 'newgame' && n >= 1 && n <= 3) { AS.Main.newRun(G.screenData.seed, AS.DIFF_KEYS[n - 1]); return true; }
     if (scr === 'title' && (k === 'Enter' || k === ' ')) { if (G.saveInfo) AS.Main.resume(G.saveInfo); else Sc.open('newgame', { seed: U.randomSeed() }); return true; }
     return false;

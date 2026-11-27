@@ -1,4 +1,4 @@
-/* ATLAS SYNDICATE v6 — render/core.js
+/* ATLAS SYNDICATE v7 — render/core.js
    Client state (AS.G), the integer-scaled adaptive layout (from v4), the galaxy camera and
    immediate-mode UI primitives: riveted plates, hazard stripes, buttons, tooltips. */
 (function (AS) {
@@ -16,12 +16,19 @@
     paused: false, speed: 1, urlSpeed: 1, acc: 0, time: 0, shake: 0, flash: 0, parts: [], floats: [], toast: null,
     disp: { credits: 0, conf: 100, q: 0 }, cards: [], seen: {}, advice: null, adviceT: 0,
     settings: null, name: 'PLAYER', overTimer: 0, finale: null, ff: null, attract: null, notices: [],
+    panelOpen: true, panelScroll: 0, shopSys: -1,
   };
 
   G.HUD_H = 17;
   G.TICKER_H = 13;
   G.bottomH = () => G.TICKER_H;
   G.mapBottom = () => G.H - G.bottomH();
+  /** The collapsible left panel: full width when open, a thin strip when collapsed, absent outside play. */
+  G.PANEL_STRIP = 12;
+  G.panelFull = () => Math.round(U.clamp(G.W * 0.27, 158, 204));
+  G.hasPanel = () => G.mode === 'play' && !!G.run && G.run.phase === 'play';
+  G.panelW = () => (!G.hasPanel() ? 0 : G.panelOpen ? G.panelFull() : G.PANEL_STRIP);
+  G.mapLeft = () => G.panelW();
 
   /* ---------- layout: pick the largest integer device-pixel scale that keeps the logical view >= the minimum ---------- */
   /** UI scale: 100% is the whole-pixel scale that fits a 640x360 view on this screen; 125/150/200% use
@@ -52,15 +59,16 @@
   /* ---------- camera: smooth zoom (animated between whole-number levels), glides, momentum ---------- */
   // cam.z = target zoom level (whole number); cam.zr = zoom being drawn right now (animates towards cam.z).
   G.mapMidY = () => (G.HUD_H + G.mapBottom()) / 2;
+  G.mapMidX = () => (G.mapLeft() + G.W) / 2;
   G.toWorld = (x, y) => ({ x: x / G.cam.zr + G.cam.x, y: y / G.cam.zr + G.cam.y });
   G.toScreen = (x, y) => ({ x: (x - G.cam.x) * G.cam.zr, y: (y - G.cam.y) * G.cam.zr });
-  G.camCenter = () => ({ x: G.cam.x + G.W / 2 / G.cam.zr, y: G.cam.y + G.mapMidY() / G.cam.zr });
-  G.setCenter = (cx, cy) => { G.cam.x = cx - G.W / 2 / G.cam.zr; G.cam.y = cy - G.mapMidY() / G.cam.zr; };
+  G.camCenter = () => ({ x: G.cam.x + G.mapMidX() / G.cam.zr, y: G.cam.y + G.mapMidY() / G.cam.zr });
+  G.setCenter = (cx, cy) => { G.cam.x = cx - G.mapMidX() / G.cam.zr; G.cam.y = cy - G.mapMidY() / G.cam.zr; };
   G.clampCam = function () {
     const z = G.cam.zr, M = C.camera.margin;
     const vw = G.W / z, vh = (G.mapBottom() - G.HUD_H) / z;
     const cx = 0, cy = 0;
-    const x0 = cx - 235 - M / z, x1 = cx + 235 + M / z - vw, y0 = cy - 140 - M / z - G.HUD_H / z, y1 = cy + 140 + M / z - vh;
+    const x0 = cx - 235 - M / z - G.mapLeft() / z, x1 = cx + 235 + M / z - vw, y0 = cy - 140 - M / z - G.HUD_H / z, y1 = cy + 140 + M / z - vh;
     if (G.cam.x < x0 || G.cam.x > x1) G.cam.vx = 0;
     if (G.cam.y < y0 || G.cam.y > y1) G.cam.vy = 0;
     G.cam.x = x1 < x0 ? (x0 + x1) / 2 : U.clamp(G.cam.x, x0, x1);
@@ -77,7 +85,7 @@
     G.cam.z = z;
   };
   G.zoomStep = function (d, sx, sy) {
-    G.zoomAt(sx === undefined ? G.W / 2 : sx, sy === undefined ? G.mapMidY() : sy, G.cam.z + d);
+    G.zoomAt(sx === undefined ? G.mapMidX() : sx, sy === undefined ? G.mapMidY() : sy, G.cam.z + d);
   };
   /** Zoom 1, centred on the galaxy core. */
   G.fitView = function (run, glide) {
@@ -215,6 +223,7 @@
     lines.forEach((l, i) => D.text(ctx, l, x + 6, y + 4 + i * 10, 31, { shadow: false, big: true }));
   };
 
+  /** Short alerts ("building placed", "connected") appear in the bottom strip for a few seconds. */
   G.toast = null;
-  G.showToast = function (text, col) { G.toast = { text: String(text).toUpperCase(), col: col === undefined ? 18 : col, t: 2.8 }; };
+  G.showToast = function (text, col) { G.toast = { text: String(text).toUpperCase(), col: col === undefined ? 18 : col, t: 3.2, max: 3.2 }; };
 })(globalThis.AS = globalThis.AS || {});

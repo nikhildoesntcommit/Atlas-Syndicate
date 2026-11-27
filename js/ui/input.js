@@ -1,11 +1,12 @@
-/* ATLAS SYNDICATE v6 — ui/input.js
+/* ATLAS SYNDICATE v7 — ui/input.js
    Mouse, keyboard and touch (pointer events, so touch works the same way).
    Galaxy: click your system = open it; click another = details; drag from your system onto another =
            move or attack (the order panel shows odds and fuel first); drag empty space = pan.
    System: click a planet = open it; drag planet -> planet = open a pathway; click a pathway = select it.
-   Planet: click an empty slot = build menu; drag DOWN from an extractor = drill (follows the pointer cell
-           by cell, stops at barriers, live price); drag ACROSS from an extractor to a processor or a port =
-           conveyor; drag from a port to a processor = take what arrives. Right-click or Esc = back. */
+   Planet: click an empty slot = build list (top of the left panel); drag DOWN from an extractor = drill
+           (follows the pointer cell by cell, stops at barriers, live price); drag ACROSS from an ice drill or
+           fuel pump to its processor or a port = conveyor; drag from a port to a processor = take what
+           arrives. Right-click or Esc = back. Wheel over the left panel scrolls it; Tab collapses it. */
 (function (AS) {
   'use strict';
 
@@ -16,7 +17,8 @@
     const r = G.canvas.getBoundingClientRect();
     return { x: (e.clientX - r.left) * G.W / Math.max(1, r.width), y: (e.clientY - r.top) * G.H / Math.max(1, r.height) };
   }
-  const inMap = p => p.y > G.HUD_H && p.y < G.mapBottom();
+  const inMap = p => p.y > G.HUD_H && p.y < G.mapBottom() && p.x >= G.mapLeft();
+  const inPanel = p => G.hasPanel() && p.x < G.panelW() && p.y > G.HUD_H && p.y < G.mapBottom();
   const playing = () => G.mode === 'play' && G.run && !G.screen && !G.ff;
   const sys = () => (G.run && G.sysId >= 0 ? G.run.systems[G.sysId] : null);
 
@@ -75,14 +77,12 @@
     if (e.button === 2) { if (G.view !== 'galaxy') Act.back(); else { G.order = null; G.sel = null; } return; }
     if (G.view === 'planet') {
       const s = sys(), L = AS.PlanetView.layout(run, s, G.planet);
-      if (p.x >= G.W - L.pw) return;
-      const sl = AS.PlanetView.slotAt(L, p.x, p.y), b = sl ? S.bldAt(L.p, sl.i) : null, pt = AS.PlanetView.portAt(L, p.x, p.y);
+      const pt = AS.PlanetView.portAt(L, p.x, p.y), sl = pt ? null : AS.PlanetView.slotAt(L, p.x, p.y), b = sl ? S.bldAt(L.p, sl.i) : null;
       G.drag = { kind: 'press', sx: p.x, sy: p.y, slot: sl ? sl.i : -1, bld: b ? b.id : -1, port: pt ? pt.pw.id : -1, sys: s.id, pi: G.planet };
       return;
     }
     if (G.view === 'system') {
       const s = sys(), L = AS.SysView.layout(run, s);
-      if (p.x >= G.W - L.pw) return;
       const n = AS.SysView.nodeAt(L, p.x, p.y);
       G.drag = { kind: 'press', sx: p.x, sy: p.y, node: n ? n.idx : -1 };
       return;
@@ -110,16 +110,16 @@
         const s = sys(), L = AS.PlanetView.layout(run, s, G.planet);
         if (dr.kind === 'press' && far && s.owner === 0) {
           const b = dr.bld >= 0 ? S.bldById(L.p, dr.bld) : null;
-          const isExt = b && AS.BLD[b.kind].role === 'ext';
+          const isExt = b && AS.BLD[b.kind].role === 'ext', direct = isExt && !AS.RES[AS.BLD[b.kind].res].proc;
           const down = p.y - dr.sy > Math.abs(p.x - dr.sx);   // dragging downward means drilling; across means a conveyor
-          if (isExt && !b.drill && down) G.drag = { kind: 'drill', sys: s.id, pi: G.planet, bld: b.id, path: [S.slotX(L.p, b.slot, run.factions[0])], price: 0, valid: false };
-          else if (isExt) G.drag = { kind: 'conv', sys: s.id, pi: G.planet, from: { b: b.id }, valid: false };
+          if (isExt && !b.drill && (down || direct)) G.drag = { kind: 'drill', sys: s.id, pi: G.planet, bld: b.id, path: [S.slotX(L.p, b.slot, run.factions[0])], price: 0, valid: false };
+          else if (isExt && !direct) G.drag = { kind: 'conv', sys: s.id, pi: G.planet, from: { b: b.id }, valid: false };
           else if (dr.port >= 0) G.drag = { kind: 'conv', sys: s.id, pi: G.planet, from: { p: dr.port }, valid: false };
         }
         const d2 = G.drag;
         if (d2 && d2.kind === 'drill') { drillTo(d2, L, AS.PlanetView.cellAt(L, p.x, p.y)); drillState(d2, run, L); }
         if (d2 && d2.kind === 'conv') {
-          const sl = AS.PlanetView.slotAt(L, p.x, p.y), q = sl ? S.bldAt(L.p, sl.i) : null, pt = AS.PlanetView.portAt(L, p.x, p.y);
+          const pt = AS.PlanetView.portAt(L, p.x, p.y), sl = pt ? null : AS.PlanetView.slotAt(L, p.x, p.y), q = sl ? S.bldAt(L.p, sl.i) : null;
           d2.to = q && AS.BLD[q.kind].role === 'proc' ? { b: q.id } : pt && d2.from.b !== undefined ? { p: pt.pw.id } : null;
           d2.valid = !!d2.to;
         }
@@ -166,7 +166,7 @@
     const run = G.run;
     if (G.view === 'planet') {
       if (dr.kind === 'drill') { if (dr.valid) Act.drill(dr.sys, dr.pi, dr.bld, dr.path); else if (dr.path.length > 1) G.showToast(dr.hint === 'BARRIER' ? 'BARRIERS CANNOT BE DRILLED: GO AROUND' : 'END THE DRILL ON A ' + AS.RES[AS.BLD[S.bldById(run.systems[dr.sys].planets[dr.pi], dr.bld).kind].res].name + ' DEPOSIT', 18); return; }
-      if (dr.kind === 'conv') { if (dr.valid) Act.connect(dr.sys, dr.pi, dr.from, dr.to); return; }
+      if (dr.kind === 'conv') { if (dr.valid) Act.connect(dr.sys, dr.pi, dr.from, dr.to); else G.showToast(dr.from.b !== undefined ? 'DROP IT ON A MATCHING PROCESSOR OR A PORT' : 'DROP IT ON A WATER PLANT OR REFINERY', 18); return; }
       // a click
       if (dr.bld >= 0) G.sel = { bld: dr.bld };
       else if (dr.port >= 0) G.sel = { port: dr.port };
@@ -202,9 +202,10 @@
   }
   function wheel(e) {
     e.preventDefault();
-    if (!playing() || G.view !== 'galaxy') return;
+    if (!playing()) return;
     const p = canvasPos(e);
-    if (!inMap(p)) return;
+    if (inPanel(p) && G.panelOpen) { G.panelScroll = Math.max(0, Math.min(G.panelMaxScroll || 0, G.panelScroll + (e.deltaY > 0 ? 24 : -24))); return; }
+    if (G.view !== 'galaxy' || !inMap(p)) return;
     const now = performance.now();
     if (now - (In.lastWheel || 0) < 110) return;
     In.lastWheel = now;
@@ -225,7 +226,8 @@
     else if (k === '1' || k === '2' || k === '3') Act.setSpeed(AS.CONFIG.sim.hudSpeeds[+k - 1]);
     else if (k === 'm' || k === 'M') Act.toggleMute();
     else if (k === 't' || k === 'T') Act.toggleTips();
-    else if (k === 'u' || k === 'U') AS.Screens.open('shop');
+    else if (k === 'b' || k === 'B' || k === 'u' || k === 'U') Act.openShop();
+    else if (k === 'Tab') { Act.togglePanel(); e.preventDefault(); }
     else if (k === 'q' || k === 'Q') G.zoomStep(-1);
     else if (k === 'e' || k === 'E') G.zoomStep(1);
     else if (k === 'Escape') {
