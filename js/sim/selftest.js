@@ -35,6 +35,7 @@
     const run = S.createRun(1234, {});
     S.begin(run, S.homeCandidates(run)[0]);
     const f = run.factions[0], home = run.systems[f.capital], p = home.planets[0];
+    check('next-move guidance starts with a cash engine', S.nextMove(run, 0).kind === 'gold');
     check('everyone starts with no military', run.factions.every(x => S.militaryPower(run, x.id) === 0));
     check('every home has the same four planets', run.factions.every(x => JSON.stringify(run.systems[x.capital].planets.map(q => q.rock)) === JSON.stringify(home.planets.map(q => q.rock))));
     f.money = 5000;

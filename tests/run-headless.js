@@ -19,7 +19,7 @@ const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
 const FILES = ['js/config.js', 'js/util.js', 'js/sim/planet.js', 'js/sim/galaxy.js', 'js/sim/economy.js', 'js/sim/combat.js', 'js/sim/events.js',
-  'js/sim/sim.js', 'js/sim/actions.js', 'js/sim/ai/personalities.js', 'js/sim/ai/brain.js', 'js/sim/selftest.js', 'tests/average-player.js'];
+  'js/sim/sim.js', 'js/sim/actions.js', 'js/sim/advice.js', 'js/sim/ai/personalities.js', 'js/sim/ai/brain.js', 'js/sim/selftest.js', 'tests/average-player.js'];
 for (const f of FILES) vm.runInThisContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), { filename: f });
 const AS = globalThis.AS, S = AS.S, U = AS.U, C = AS.CONFIG;
 

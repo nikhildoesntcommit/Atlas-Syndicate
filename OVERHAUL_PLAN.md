@@ -6,7 +6,7 @@ Every coherent increment is tested, committed with a conventional-commit message
 
 ## Current state
 
-* **Phase:** 1 complete; Phase 2 begins next.
+* **Phase:** 2, increment 1 complete.
 * **Baseline commit:** `acdcf77` (v7.1.0).
 * **Repository health:** clean before analysis; `origin` fetch/push configured to the GitHub repository.
 * **Baseline validation:** `node tests/run-headless.js selftest` passed before this overhaul.
@@ -23,7 +23,8 @@ Every coherent increment is tested, committed with a conventional-commit message
 
 | Commit | Status | What changed | Verification |
 |---|---|---|---|
-| Pending | Complete | Phase 1 audit and this persistent plan | Document review; commit/push next |
+| `0313004` | Complete | Phase 1 audit and this persistent plan | Document review |
+| Pending | Complete | Pure next-move selector, command-deck priority card, and self-test coverage | `node tests/run-headless.js selftest` |
 
 ## In progress
 
@@ -31,13 +32,13 @@ None. The next increment begins only after confirming a clean tree.
 
 ## Next increments
 
-1. Create a pure next-move selector with priority rules for initial economy, shortages, military readiness, and expansion. Add tests.
-2. Render the selector as the top command-deck card, keeping contextual build/inspection cards first when selected.
-3. Rework starvation into warning → reduced output → attrition, with an emergency recovery affordance.
-4. Rewrite onboarding and replace stale browser test coverage.
-5. Add discoverable action modes/click-to-preview for drill and routes.
-6. Refine visual feedback, shop roles, difficulty/event pacing, and accessibility.
+1. Rework starvation into warning → reduced output → attrition, with an emergency recovery affordance.
+2. Rewrite onboarding and replace stale browser test coverage.
+3. Add discoverable action modes/click-to-preview for drill and routes.
+4. Refine visual feedback, shop roles, difficulty/event pacing, and accessibility.
 
 ## Resume note
 
-The analysis is intentionally broad but grounded in the current codebase. Before any code increment: run `git status --short`, then implement only the next coherent listed step, test it, update this file, commit, and push.
+Increment 1 added `S.nextMove(run, fid)`, a pure priority selector used by the left command deck whenever no object is selected. It prioritises visible threats, food/water/fuel risk, first cash/food/military milestones, frontier expansion, and strategic freedom. It is loaded in the game, browser self-test, and Node runner; the first-cash-engine rule is covered by the deterministic self-test.
+
+Before any next increment: run `git status --short`, then implement only the next coherent listed step, test it, update this file, commit, and push.

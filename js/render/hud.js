@@ -139,6 +139,7 @@
     // precedence, so a clicked + slot never leaves the choices below the fold.
     const hasContext = contextActive(run);
     if (hasContext) y = contextSection(ctx, run, x + 4, y, iw, P);
+    else y = nextMoveSection(ctx, run, x + 4, y, iw, P);
     y = notifSection(ctx, run, x + 4, y, iw, P);
     if (G.view === 'planet') y = planetSection(ctx, run, x + 4, y, iw, P);
     y = systemSection(ctx, run, x + 4, y, iw, P);
@@ -180,6 +181,20 @@
   }
 
   /* ---------- 1. what you clicked ---------- */
+  function nextMoveSection(ctx, run, x, y, w, P) {
+    const n = S.nextMove(run, 0);
+    const col = { gold: 13, food: 22, water: 26, fuel: 18, fleet: 17, defend: 17, expand: 13, free: 12, home: 13 }[n.kind] || 7;
+    y = header(ctx, x, y, w, 'NEXT MOVE', col);
+    TBn(ctx, n.title, x, y, col); y += 10;
+    y = wrapLines(ctx, n.text, x, y, w, 7, P, 4) + 3;
+    const act = () => {
+      if (n.action === 'shop') Act().openShop(n.sys, n.tab);
+      else if (n.action === 'threat' && n.sys !== undefined) H.goTo(run, n.sys);
+      else if (n.action === 'home' && n.sys !== undefined) Act().openSystem(n.sys);
+    };
+    if (n.cta && n.action !== 'none') { P.btn(x, y, w, 13, n.cta, act, { primary: true, tip: n.text }); y += 16; }
+    return y + 2;
+  }
   function contextActive(run) {
     const sel = G.sel || {};
     if (G.view === 'planet') {
