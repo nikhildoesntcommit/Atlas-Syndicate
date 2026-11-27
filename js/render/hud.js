@@ -134,7 +134,11 @@
     ctx.beginPath(); ctx.rect(0, y0, w, h); ctx.clip();
     let y = y0 + 3 - G.panelScroll;
     const top = y;
-    y = contextSection(ctx, run, x + 4, y, iw, P);
+    // Alerts own the top of the command panel until the player explicitly asks
+    // to build or inspect something.  In that moment the decision palette takes
+    // precedence, so a clicked + slot never leaves the choices below the fold.
+    const hasContext = contextActive(run);
+    if (hasContext) y = contextSection(ctx, run, x + 4, y, iw, P);
     y = notifSection(ctx, run, x + 4, y, iw, P);
     if (G.view === 'planet') y = planetSection(ctx, run, x + 4, y, iw, P);
     y = systemSection(ctx, run, x + 4, y, iw, P);
@@ -176,6 +180,14 @@
   }
 
   /* ---------- 1. what you clicked ---------- */
+  function contextActive(run) {
+    const sel = G.sel || {};
+    if (G.view === 'planet') {
+      const s = run.systems[G.sysId], p = s && s.planets[G.planet];
+      return !!(p && ((sel.slot !== undefined && s.owner === 0 && !S.bldAt(p, sel.slot)) || sel.bld !== undefined || sel.port !== undefined));
+    }
+    return G.view === 'system' && sel.pathway !== undefined;
+  }
   function contextSection(ctx, run, x, y, w, P) {
     const f = run.factions[0], sel = G.sel || {};
     if (G.view === 'planet') {
@@ -202,8 +214,21 @@
     const f = run.factions[0], p = s.planets[pi];
     y = header(ctx, x, y, w, 'BUILD IN SLOT ' + (slot + 1), 13);
     P.btn(x + w - 11, y - 12, 11, 9, 'X', () => { G.sel = null; AS.Sfx.play('click'); }, { big: false, tip: 'CLOSE (ESC).' });
-    TS(ctx, 'CLICK A BUILDING TO BUY IT. EACH BRINGS ' + C.econ.crew + ' WORKERS.', x, y, 5); y += 9;
-    for (const kind of AS.BLD_KEYS) {
+    TS(ctx, 'EACH BUILDING BRINGS ' + C.econ.crew + ' WORKERS. PICK A JOB.', x, y, 5); y += 10;
+    // The palette mirrors the game loop instead of presenting seven unrelated
+    // machines.  Keeping all choices visible preserves strategy while making
+    // the first-time decision legible at a glance.
+    const groups = [
+      { title: 'MAKE MONEY', note: 'GOLD > MARKET', kinds: ['goldmine'] },
+      { title: 'FEED CREWS', note: 'ICE > WATER > FOOD', kinds: ['icedrill', 'water', 'greenhouse', 'livestock'] },
+      { title: 'POWER FLEET', note: 'CRUDE > FUEL', kinds: ['pump', 'refinery'] },
+    ];
+    for (const group of groups) {
+      D.rect(ctx, x, y, w, 8, 2);
+      TS(ctx, group.title, x + 3, y + 1, group.title === 'FEED CREWS' ? 22 : group.title === 'POWER FLEET' ? 18 : 13);
+      TS(ctx, group.note, x + w - 3, y + 1, 5, 'right');
+      y += 10;
+      for (const kind of group.kinds) {
       const B = AS.BLD[kind], c = B.cost, can = S.canPay(f, c), good = S.procBonus(p, kind) > 1, want = AS.Tutorial && AS.Tutorial.wantBuild(kind);
       P.btn(x, y, w, 20, B.name, () => Act().build(s.id, pi, slot, kind), { noText: true, disabled: !can, primary: want, onDisabled: () => Act().fail({ reason: 'cost', cost: c }),
         tip: B.name + ': ' + B.does + (good ? ' +50% ON THIS PLANET.' : '') + ' COSTS ' + money(c) + '.' });
@@ -212,8 +237,10 @@
       TBn(ctx, money(c), x + w - 3, y + 2, can ? (want ? 0 : 13) : 4, 'right');
       TS(ctx, (good ? '+50% HERE. ' : '') + B.does, x + 11, y + 12, can ? (want ? 1 : good ? 22 : 6) : 4);
       y += 22;
+      }
+      y += 1;
     }
-    return y + 4;
+    return y + 3;
   }
   function bldCard(ctx, run, s, pi, b, x, y, w, P) {
     const p = s.planets[pi], fl = S.sysFlow(run, s), st = fl.B[b.id], B = AS.BLD[b.kind], own = s.owner === 0, lvl = b.lvl || 1;
