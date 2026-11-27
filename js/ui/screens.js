@@ -123,7 +123,7 @@
 
   /* ---------- settings ---------- */
   function drawSettings(ctx) {
-    const p = panel(ctx, 320, 222, 'SETTINGS');
+    const p = panel(ctx, 320, 238, 'SETTINGS');
     const s = G.settings;
     let y = p.y + 26;
     const row = (label, value, fn, tip) => { T(ctx, label, p.x + 14, y + 3, 7, { big: true }); G.button(ctx, p.x + p.w - 114, y, 100, 13, value, () => { AS.Sfx.play('click'); fn(); }, { tip }); y += 16; };
@@ -155,6 +155,13 @@
       G.showToast('SAVED GAME DELETED', 13);
     }, { disabled: !hasSave && !arm, col: arm ? 17 : undefined, tip: 'DELETE YOUR SAVED GAME FROM THIS BROWSER (CLICK TWICE). ' + (inGame ? 'THE GAME IN PROGRESS STOPS AUTOSAVING.' : 'CONTINUE DISAPPEARS FROM THE MENU.') });
     y += 14;
+    const resetArm = G.resetArm && G.time < G.resetArm;
+    T(ctx, 'FULL RESET', p.x + 14, y + 3, 17, { big: true });
+    G.button(ctx, p.x + p.w - 114, y, 100, 13, resetArm ? 'CONFIRM WIPE' : 'RESET ALL DATA', () => {
+      if (!resetArm) { G.resetArm = G.time + 3; AS.Sfx.play('warning'); return; }
+      Act.resetAllData();
+    }, { col: 17, tip: 'WIPES ATLAS SAVES, SETTINGS, ACHIEVEMENTS AND TUTORIAL STATE FROM THIS BROWSER, THEN RELOADS. CLICK TWICE TO CONFIRM.' });
+    y += 16;
     backBtn(ctx, p);
   }
 

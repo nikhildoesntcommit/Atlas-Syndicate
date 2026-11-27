@@ -176,6 +176,18 @@
     return found;
   };
   Act.deleteSaves = function () { Act.clearSave(); Act.discardOldSaves(); G.saveInfo = null; };
+  /** Removes this game's saves, settings, achievements and in-memory fallback.
+      It deliberately only touches Atlas keys, never unrelated site storage. */
+  Act.resetAllData = function () {
+    const prefixes = ['atlas7.', 'atlas6.', 'atlas5.', 'atlas4.', 'atlas3.', 'atlas2.', 'atlas1.'];
+    try {
+      const ls = globalThis.localStorage, keys = [];
+      for (let i = 0; ls && i < ls.length; i++) { const k = ls.key(i); if (k && prefixes.some(p => k.indexOf(p) === 0)) keys.push(k); }
+      for (const k of keys) ls.removeItem(k);
+    } catch (e) { /* storage may be unavailable; memory is still reset */ }
+    AS.Store.mem = {};
+    if (globalThis.location && globalThis.location.reload) globalThis.location.reload();
+  };
 
   /* ---------- achievements ---------- */
   Act.achievements = () => Store.get('ach', {}) || {};

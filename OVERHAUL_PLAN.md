@@ -6,7 +6,7 @@ Every coherent increment is tested, committed with a conventional-commit message
 
 ## Current state
 
-* **Phase:** 2, increment 2 complete.
+* **Phase:** 2, reset increment in progress.
 * **Baseline commit:** `acdcf77` (v7.1.0).
 * **Repository health:** clean before analysis; `origin` fetch/push configured to the GitHub repository.
 * **Baseline validation:** `node tests/run-headless.js selftest` passed before this overhaul.
@@ -29,7 +29,7 @@ Every coherent increment is tested, committed with a conventional-commit message
 
 ## In progress
 
-None. The next increment begins only after confirming a clean tree.
+* Add a two-step full reset in Settings that removes every Atlas localStorage generation, fallback memory, tutorial state, settings, achievements, and saves, then reloads.
 
 ## Next increments
 
